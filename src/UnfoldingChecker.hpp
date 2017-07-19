@@ -28,7 +28,7 @@ public:
 	bool operator<(const Transition& other) const;
 	bool operator==(const Transition& other) const;
 
-	Transition(int id, int actor, int read_write, int access_var);
+	Transition(int read_write, int access_var);
 	void execute();
 };
 class Actor {

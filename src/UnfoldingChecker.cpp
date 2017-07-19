@@ -6,8 +6,8 @@
 //#include "src/mc/mc_state.h"
 
 #include "UnfoldingChecker.hpp"
-#include "xbt/ex.h"
-#include "xbt/asserts.h"
+//#include "xbt/ex.h"
+//#include "xbt/asserts.h"
 
 namespace simgrid {
 namespace mc {
@@ -15,9 +15,7 @@ int nb_events;
 EventSet U, G;
 //class UnfoldingEvent;
 
-Transition::Transition(int id, int actor_id, int read_write, int access_var) {
-	this->id = id;
-	this->actor_id = actor_id;
+Transition::Transition(int read_write, int access_var) {
 	this->read_write = read_write;
 	this->access_var = access_var;
 }
@@ -41,6 +39,11 @@ Actor::Actor(int id, int nb_trans, std::array<Transition, 10> trans) {
 	this->id = id;
 	this->nb_trans = nb_trans;
 	this->trans = trans;
+	int tid = 0;
+	for (auto t: trans) {
+		t.actor_id = this->id;
+		t.id = tid++;
+	}
 }
 
 bool Actor::operator<(const Actor& other) const {
