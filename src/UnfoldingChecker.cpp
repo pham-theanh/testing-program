@@ -339,7 +339,7 @@ bool UnfoldingEvent::conflictWithConfig(Configuration config) {
 
 // this operator is used for ordering in a set (need a key)
 bool UnfoldingEvent::operator<(const UnfoldingEvent& other) const {
-	std::cout << " trong operator < \n";
+	//std::cout << " trong operator < \n";
 	if ((this->transition.actor_id < other.transition.actor_id)
 			or (this->transition.id < other.transition.id)
 			or (not (this->causes == other.causes)))
@@ -519,6 +519,7 @@ void UnfoldingChecker::extend(std::set<Actor> proc, Configuration C,
 
 void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
 		UnfoldingEvent* currentEvt, EventSet prev_exC, std::set<Actor> proc) {
+
 
 	UnfoldingEvent *e;
 	EventSet enC, exC = prev_exC;

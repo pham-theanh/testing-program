@@ -17,7 +17,7 @@ int main() {
 	UnfoldingChecker UC;
 	Configuration C;
 
-
+/*
 	 /// the first example (in the paper)
 	 Transition t1(0, 1, 1, 0);
 	 Transition t2(0, 2, 0, 0);
@@ -40,9 +40,9 @@ int main() {
 
 	 State initState(3, sa);
 
-
-
+*/
 /*
+
 	 // the second example
 	 Transition t1(0, 1, 1, 0);
 	 Transition t2(0, 2, 1, 1);
@@ -64,7 +64,7 @@ int main() {
 */
 
 
-/*
+
 		//the third example
 	 Transition t1(0, 1, 1, 0);
 	 Transition t2(0, 2, 1, 1);
@@ -85,7 +85,7 @@ int main() {
 	 sa.insert(p2);
 	 sa.insert(p3);
 	 State initState(3, sa);
-*/
+
 /*
 		//the fourth example
 	 Transition t1(0, 1, 1, 0);
@@ -131,13 +131,14 @@ int main() {
 	sa.insert(p1);
 	sa.insert(p2);
 	State initState(2, sa);
-*/
+	 */
 	//------------------------------------------------
+
 	initState.initialState = true;
 	UnfoldingEvent *e = new UnfoldingEvent();
 	e->appState = initState;
 	UC.explore(C, D, A, e, prev_exC, sa);
 
-	std::cout << " \n finishing main() ";
+	std::cout << " \n main() finished";
 	return 0;
 }
