@@ -6,8 +6,8 @@
 //#include "src/mc/mc_state.h"
 
 #include "UnfoldingChecker.hpp"
-#include "xbt/ex.h"
-#include "xbt/asserts.h"
+//#include "xbt/ex.h"
+//#include "xbt/asserts.h"
 
 namespace simgrid {
 namespace mc {
@@ -15,15 +15,29 @@ int nb_events;
 EventSet U, G;
 //class UnfoldingEvent;
 
-Transition::Transition(int id, int actor_id, int read_write, int access_var) {
-	this->id = id;
-	this->actor_id = actor_id;
+Transition::Transition(int read_write, int access_var) {
 	this->read_write = read_write;
 	this->access_var = access_var;
 }
 
+
 void Transition::execute() {
 	executed = true;
+}
+
+bool Transition::isDependingTransExecuted(std::set<Actor> actors) {
+	if (this->depending_actor < 0)
+		return true;
+	for (auto act : actors)
+		if (act.id == this->actor_id) {
+			if (act.trans[this->depending_tran].executed)
+				return true;
+			break;
+
+		}
+	std::cout<<" thang t"<<this->id<< "-p"<<this->actor_id <<" phu thuoc vao t"<<this->depending_tran <<"p"<<this->depending_actor <<" \n";
+	std::cout<<" return false \n";
+	return false;
 }
 
 bool Transition::isDependent(Transition other) {
@@ -37,10 +51,18 @@ bool Transition::isDependent(Transition other) {
 	return false;
 }
 
-Actor::Actor(int id, int nb_trans, std::array<Transition, 10> trans) {
+Actor::Actor(int id, int nb_trans, std::array<Transition, 10> &trans) {
 	this->id = id;
 	this->nb_trans = nb_trans;
 	this->trans = trans;
+	int tid = 0;
+
+	for (int i = 0; i < nb_trans; i++) {
+		this->trans[i].id = tid++;
+		this->trans[i].actor_id = id;
+
+	}
+
 }
 
 bool Actor::operator<(const Actor& other) const {
@@ -75,7 +97,7 @@ std::set<Transition> State::getEnabledTransition() {
 	for (auto p : this->actors)
 		for (int j = 0; j < p.nb_trans; j++)
 			if (not p.trans[j].executed) {
-				set_t.insert(p.trans[j]);
+			if(p.trans[j].isDependingTransExecuted(actors))	set_t.insert(p.trans[j]);
 				break;
 			}
 
@@ -110,8 +132,11 @@ bool EventSet::depends(EventSet s2) {
 
 	for (auto e1 : this->events_)
 		for (auto e2 : s2.events_)
-			if (e1->transition.isDependent(e2->transition))
-				return true;
+			  if(*e1 == *e2)
+				 continue;
+			else
+			if (e1->transition.isDependent(e2->transition))	return true;
+
 	return false;
 }
 
@@ -279,9 +304,13 @@ bool UnfoldingEvent::isConflict(UnfoldingEvent* otherEvent) {
 	else {
 		h1.insert(e);
 		h2.insert(otherEvent);
-		return h1.depends(h2);
+		EventSet his=h1;
+		//FIXME remove all common events
+		for(auto evt:his.events_) if(h2.contains(evt)) {h1.erase(evt); h2.erase(evt);}
+		return  h1.depends(h2);
 
 	}
+	return false;
 }
 
 /** @brief Checks if current event is in immediate conflict with the provided one
@@ -295,10 +324,10 @@ bool UnfoldingEvent::isConflict(UnfoldingEvent* otherEvent) {
  */
 
 bool UnfoldingEvent::isImmediateConflict(UnfoldingEvent *evt2) {
+
 	// The first condition is easy to check
 	if (not isConflict(evt2))
 		return false;
-
 	// Now, check the second condition
 	EventSet hist1 = this->getHistory();
 	EventSet hist2 = evt2->getHistory();
@@ -339,7 +368,6 @@ bool UnfoldingEvent::conflictWithConfig(Configuration config) {
 
 // this operator is used for ordering in a set (need a key)
 bool UnfoldingEvent::operator<(const UnfoldingEvent& other) const {
-	//std::cout << " trong operator < \n";
 	if ((this->transition.actor_id < other.transition.actor_id)
 			or (this->transition.id < other.transition.id)
 			or (not (this->causes == other.causes)))
@@ -387,7 +415,7 @@ bool Transition::operator==(const Transition& other) const {
  */
 
 void Configuration::generateEvents(EventSet& result, Transition t,
-		UnfoldingEvent* preEvt, EventSet cause, EventSet candidateHistory) {
+		EventSet causuality_events, EventSet cause, EventSet candidateHistory) {
 	if (candidateHistory.empty()) {
 		bool chk = true;
 		// create a new event if all event in the history candidate have transitions which are dependent with t
@@ -400,7 +428,8 @@ void Configuration::generateEvents(EventSet& result, Transition t,
 		if (chk) {
 			nb_events++;
 			EventSet cause1 = cause;
-			cause1.insert(preEvt);
+			//cause1.insert(preEvt);
+			cause1= cause1.makeUnion(cause1,causuality_events);
 			UnfoldingEvent *e = new UnfoldingEvent(nb_events, t, cause1);
 			result.insert(e);
 		}
@@ -414,11 +443,11 @@ void Configuration::generateEvents(EventSet& result, Transition t,
 		evtSet3 = candidateHistory;
 		evtSet1.insert(a);
 		evtSet3.erase(a);
-		generateEvents(result, t, preEvt, evtSet1, evtSet3);
+		generateEvents(result, t, causuality_events, evtSet1, evtSet3);
 		evtSet2 = cause;
 		evtSet4 = candidateHistory;
 		evtSet4.erase(a);
-		generateEvents(result, t, preEvt, evtSet2, evtSet4);
+		generateEvents(result, t, causuality_events, evtSet2, evtSet4);
 	}
 
 }
@@ -443,10 +472,12 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 
 			if (count == D.size()) {
 				J = U1;
-				/*std::cout << "\n find oud a value for J: \n";
+/*
+				std::cout << "\n find out a value for J: \n";
 				 for (auto evt : J.events_)
 				 evt->print();
-				 std::cout << "\n";*/
+				 std::cout << "\n";
+				 for(auto evt : D.events_) evt->print(); std::cout<<"   \n";*/
 			}
 		}
 		return;
@@ -473,11 +504,13 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 /* for each event in C, search all enabled transition in the state of that event
  then creating new event based on the transition and configuration C.maxEvent*/
 
-void UnfoldingChecker::extend(std::set<Actor> proc, Configuration C,
+void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
 		EventSet & exC, EventSet& enC) {
 	EventSet causes;
 	if (C.empty())
-		for (auto p : proc) {
+		{for (auto p : actors)
+			if(p.trans[0].isDependingTransExecuted(actors))
+			{
 			nb_events++;
 			UnfoldingEvent *newEvent = new UnfoldingEvent(nb_events, p.trans[0],
 					causes);
@@ -487,7 +520,7 @@ void UnfoldingChecker::extend(std::set<Actor> proc, Configuration C,
 			if (not enC.contains(newEvent))
 				enC.insert(newEvent);
 			if (not exC.contains(newEvent))
-				exC.insert(newEvent);
+				exC.insert(newEvent);}
 
 		}
 	else {
@@ -499,10 +532,22 @@ void UnfoldingChecker::extend(std::set<Actor> proc, Configuration C,
 			if (not trans.isDependent(C.lastEvent->transition))
 				continue; // don't consider this transition
 
-			EventSet exC1, his, historyCandidate = C.maxEvent;
+			EventSet exC1, his, causality_events, historyCandidate = C.maxEvent;
 			historyCandidate.erase(C.lastEvent);
-			C.generateEvents(exC1, trans, C.lastEvent, his, historyCandidate);
 
+			causality_events.insert(C.lastEvent);
+			// add causality events (events must happen to make new events occur)
+			for (auto evt: historyCandidate.events_) if (trans.actor_id == evt->transition.actor_id)
+			{ causality_events.insert(evt);
+			  historyCandidate.erase(evt);
+			  break;
+			}
+
+
+			//C.generateEvents(exC1, trans, C.lastEvent, his, historyCandidate);
+			C.generateEvents(exC1, trans, causality_events, his, historyCandidate);
+
+			// Extension of C = previous  extension union the events that are created from the maximal events
 			exC = exC.makeUnion(exC, exC1);
 
 		}
@@ -518,8 +563,7 @@ void UnfoldingChecker::extend(std::set<Actor> proc, Configuration C,
 }
 
 void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
-		UnfoldingEvent* currentEvt, EventSet prev_exC, std::set<Actor> proc) {
-
+		UnfoldingEvent* currentEvt, EventSet prev_exC, std::set<Actor> actors) {
 
 	UnfoldingEvent *e;
 	EventSet enC, exC = prev_exC;
@@ -527,7 +571,7 @@ void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
 
 	// exC = previous exC - currentEvt + new events
 
-	extend(proc, C, exC, enC);
+	extend(actors, C, exC, enC);
 
 	if (enC.empty()) {
 
@@ -569,7 +613,7 @@ void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
 
 	Configuration C1 = C.plus(e);
 	C1.updateMaxEvent(e);
-	explore(C1, D, A.minus(e), e, exC.minus(e), proc);
+	explore(C1, D, A.minus(e), e, exC.minus(e), actors);
 	EventSet J, U1;
 	EventSet Uc = U;
 
@@ -582,7 +626,7 @@ void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
 				C.events_.begin(), C.events_.end(),
 				std::inserter(dif.events_, dif.events_.end()));
 
-		explore(C, D.plus(e), dif, currentEvt, prev_exC.minus(e), proc);
+		explore(C, D.plus(e), dif, currentEvt, prev_exC.minus(e), actors);
 	}
 
 	remove(e, C, D);

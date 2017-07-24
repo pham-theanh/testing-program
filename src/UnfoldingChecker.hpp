@@ -13,31 +13,44 @@ namespace mc {
 class UnfoldingEvent;
 class EventSet;
 class Transition;
+class Actor;
 extern int nb_events;
-extern EventSet U,G;
+extern EventSet U, G;
 
 class Transition {
 public:
-	int actor_id= 0;
+	int actor_id = 0;
 	int id = 0;
 	bool executed = false;
 	int read_write = 0; // default value is read (= 0)
 	int access_var = 0; // default this transition access variable 0
+
+	// i can be executed if only depending transition has been executed
+	int depending_actor = -1;
+	int depending_tran = -1;
+
+
 	bool isDependent(Transition other);
-	Transition() { };
+	Transition() {	}	;
+
 	bool operator<(const Transition& other) const;
 	bool operator==(const Transition& other) const;
 
-	Transition(int id, int actor, int read_write, int access_var);
+	Transition(int read_write, int access_var);
 	void execute();
+	bool isDependingTransExecuted( std::set<Actor> actors);
+	//Transition *depending_tran;
+
 };
 class Actor {
 public:
 	int id = 0;
 	int nb_trans = 0;
 	std::array<Transition, 10> trans;
-	Actor() {	};
-	Actor(int id, int nb_trans, std::array<Transition, 10> trans);
+	Actor() {
+	}
+	;
+	Actor(int id, int nb_trans, std::array<Transition, 10> &trans);
 	bool operator<(const Actor& other) const;
 
 };
@@ -48,7 +61,9 @@ public:
 	bool initialState = false;
 	std::set<Actor> actors;
 
-	State() {}	;
+	State() {
+	}
+	;
 	State(int nb_actor, std::set<Actor> actors);
 
 	std::set<Transition> getEnabledTransition();
@@ -68,7 +83,7 @@ public:
 	size_t size();
 	bool empty() const;
 	UnfoldingEvent* begin() const;
-    UnfoldingEvent* end() const;
+	UnfoldingEvent* end() const;
 
 	void insert(UnfoldingEvent*);
 	void erase(UnfoldingEvent*); // adding
@@ -86,7 +101,7 @@ public:
 	UnfoldingEvent * lastEvent; // The last added event
 	void getEnabledTransition(std::set<Transition> whereto);
 	Configuration plus(UnfoldingEvent *);
-	void generateEvents(EventSet& result, Transition t,UnfoldingEvent* preEvt,
+	void generateEvents(EventSet& result, Transition t, EventSet causuality_events,
 			EventSet cause, EventSet candidateHistory);
 	void updateMaxEvent(UnfoldingEvent *);
 
@@ -98,7 +113,9 @@ public:
 	State appState;
 	Transition transition; // The last transition made to reach that state
 	EventSet causes;        // used to store directed ancestors of event e
-	UnfoldingEvent() {};
+	UnfoldingEvent() {
+	}
+	;
 	UnfoldingEvent(int nb_events, Transition t, EventSet causes);
 
 	EventSet getHistory() const;
@@ -125,17 +142,20 @@ class UnfoldingChecker {
 
 public:
 	void explore(Configuration C, EventSet D, EventSet A,
-			UnfoldingEvent *currentEvt, EventSet prev_enC,std::set<Actor> proc);
+			UnfoldingEvent *currentEvt, EventSet prev_enC,
+			std::set<Actor> proc);
 
 	void explore1(Configuration C, EventSet D, EventSet A,
-			UnfoldingEvent *currentEvt, EventSet prev_enC,std::set<Actor> proc);
+			UnfoldingEvent *currentEvt, EventSet prev_enC,
+			std::set<Actor> proc);
 
-	void extend(std::set<Actor> proc, Configuration C,
-			EventSet & ExC, EventSet& enC);
-	void remove(UnfoldingEvent *e, Configuration C, EventSet D );
-	void computeAlt(EventSet& J, EventSet D, Configuration C, EventSet U1 , EventSet U);
+	void extend(std::set<Actor> proc, Configuration C, EventSet & ExC,
+			EventSet& enC);
+	void remove(UnfoldingEvent *e, Configuration C, EventSet D);
+	void computeAlt(EventSet& J, EventSet D, Configuration C, EventSet U1,
+			EventSet U);
 	void genEventFromCandidate(EventSet& result, Transition t,
-			UnfoldingEvent* preEvt , EventSet U1 , EventSet Uc);
+			UnfoldingEvent* preEvt, EventSet U1, EventSet Uc);
 //  static Session& session;
 };
 }
