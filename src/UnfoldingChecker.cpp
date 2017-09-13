@@ -20,7 +20,6 @@ Transition::Transition(int read_write, int access_var) {
 	this->access_var = access_var;
 }
 
-
 void Transition::execute() {
 	executed = true;
 }
@@ -35,14 +34,30 @@ bool Transition::isDependingTransExecuted(std::set<Actor> actors) {
 			break;
 
 		}
-	std::cout<<" thang t"<<this->id<< "-p"<<this->actor_id <<" phu thuoc vao t"<<this->depending_tran <<"p"<<this->depending_actor <<" \n";
-	std::cout<<" return false \n";
+	std::cout << " thang t" << this->id << "-p" << this->actor_id
+			<< " phu thuoc vao t" << this->depending_tran << "p"
+			<< this->depending_actor << " \n";
+	std::cout << " return false \n";
 	return false;
 }
 
 bool Transition::isDependent(Transition other) {
+	int Mode = 1;  // Mode ==1-> mutexed model
 	if (this->actor_id == other.actor_id)
 		return true;
+
+	//FIXME change value of Mode when changing the model
+	if (Mode == 1 and this->read_write < 2)
+		return false;
+
+	// check mutexed transitions
+	if (this->access_var == other.access_var) {
+		if ((this->read_write >= 2 and other.read_write >= 2)) {
+			return true;
+		}
+	}
+
+	// check not mutexed transitions
 	if (this->access_var == other.access_var) {
 		if ((this->read_write == 1) or (other.read_write == 1)) {
 			return true;
@@ -97,7 +112,23 @@ std::set<Transition> State::getEnabledTransition() {
 	for (auto p : this->actors)
 		for (int j = 0; j < p.nb_trans; j++)
 			if (not p.trans[j].executed) {
-			if(p.trans[j].isDependingTransExecuted(actors))	set_t.insert(p.trans[j]);
+				//if (p.trans[j].isDependingTransExecuted(actors))
+				if (p.trans[j].read_write < 2)
+					set_t.insert(p.trans[j]);
+				// if p.trans[j] if lock transition, make sure that only one lock can occupy one mutex
+
+				else {
+					bool chk = true;
+					for (auto trans : set_t)
+						if (trans.access_var == p.trans[j].access_var and trans.read_write ==2 and  p.trans[j].read_write ==2) {
+							chk = false;
+							break;
+						}
+					if (chk)
+						set_t.insert(p.trans[j]);
+
+				}
+
 				break;
 			}
 
@@ -132,10 +163,10 @@ bool EventSet::depends(EventSet s2) {
 
 	for (auto e1 : this->events_)
 		for (auto e2 : s2.events_)
-			  if(*e1 == *e2)
-				 continue;
-			else
-			if (e1->transition.isDependent(e2->transition))	return true;
+			if (*e1 == *e2)
+				continue;
+			else if (e1->transition.isDependent(e2->transition))
+				return true;
 
 	return false;
 }
@@ -304,10 +335,14 @@ bool UnfoldingEvent::isConflict(UnfoldingEvent* otherEvent) {
 	else {
 		h1.insert(e);
 		h2.insert(otherEvent);
-		EventSet his=h1;
+		EventSet his = h1;
 		//FIXME remove all common events
-		for(auto evt:his.events_) if(h2.contains(evt)) {h1.erase(evt); h2.erase(evt);}
-		return  h1.depends(h2);
+		for (auto evt : his.events_)
+			if (h2.contains(evt)) {
+				h1.erase(evt);
+				h2.erase(evt);
+			}
+		return h1.depends(h2);
 
 	}
 	return false;
@@ -377,8 +412,6 @@ bool UnfoldingEvent::operator<(const UnfoldingEvent& other) const {
 
 /** @brief check semantic equality (same transition, same causes) */
 bool UnfoldingEvent::operator==(const UnfoldingEvent& other) const {
-	//FIXME replace this one return ((transition->id == other.transition->id) && (causes == other.causes));
-
 	return ((this->transition.actor_id == other.transition.actor_id)
 			&& (this->transition.id == other.transition.id)
 			&& (this->causes == other.causes));
@@ -395,7 +428,8 @@ void Configuration::getEnabledTransition(std::set<Transition> whereto) {
 
 void Configuration::updateMaxEvent(UnfoldingEvent *e) {
 	this->lastEvent = e;
-	//FIXME check that removing only the causes is enough
+	// removing only the causes is enough
+
 	for (auto evt : e->causes.events_)
 		maxEvent.erase(evt);
 	maxEvent.insert(e);
@@ -417,22 +451,14 @@ bool Transition::operator==(const Transition& other) const {
 void Configuration::generateEvents(EventSet& result, Transition t,
 		EventSet causuality_events, EventSet cause, EventSet candidateHistory) {
 	if (candidateHistory.empty()) {
-		bool chk = true;
-		// create a new event if all event in the history candidate have transitions which are dependent with t
 
-		for (auto evt : cause.events_)
-			if (not evt->transition.isDependent(t)) {
-				chk = false;
-				break;
-			}
-		if (chk) {
-			nb_events++;
-			EventSet cause1 = cause;
-			//cause1.insert(preEvt);
-			cause1= cause1.makeUnion(cause1,causuality_events);
-			UnfoldingEvent *e = new UnfoldingEvent(nb_events, t, cause1);
-			result.insert(e);
-		}
+		nb_events++;
+		EventSet cause1 = cause;
+		//cause1.insert(preEvt);
+		cause1 = cause1.makeUnion(cause1, causuality_events);
+		UnfoldingEvent *e = new UnfoldingEvent(nb_events, t, cause1);
+		result.insert(e);
+
 		return;
 	}
 
@@ -472,8 +498,8 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 
 			if (count == D.size()) {
 				J = U1;
-/*
-				std::cout << "\n find out a value for J: \n";
+				/*
+				 std::cout << "\n find out a value for J: \n";
 				 for (auto evt : J.events_)
 				 evt->print();
 				 std::cout << "\n";
@@ -501,51 +527,141 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 
 }
 
+/*bool UnfoldingEvent::checkMutexedTransition(int access_var) {
+	int nbLock = 0, nbUnlock = 0;
+	EventSet evtHisty = this->getHistory();
+	for (auto evt : evtHisty.events_)
+		if (evt->transition.access_var == access_var)
+			if (evt->transition.read_write == 2)
+				nbLock++;
+			else if (evt->transition.read_write == 3)
+				nbUnlock++;
+
+	if (this->transition.access_var == access_var)
+		if (this->transition.read_write == 2)
+			nbLock++;
+		else if (this->transition.read_write == 3)
+			nbUnlock++;
+
+	if (nbLock <= nbUnlock)
+		return true;
+	return false;
+}*/
+
 /* for each event in C, search all enabled transition in the state of that event
  then creating new event based on the transition and configuration C.maxEvent*/
 
 void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
 		EventSet & exC, EventSet& enC) {
+
+	// in the initial state each actor creates one event
+
 	EventSet causes;
-	if (C.empty())
-		{for (auto p : actors)
-			if(p.trans[0].isDependingTransExecuted(actors))
-			{
-			nb_events++;
-			UnfoldingEvent *newEvent = new UnfoldingEvent(nb_events, p.trans[0],
-					causes);
+	if (C.empty()) {
+		for (auto p : actors)
+			if (p.trans[0].isDependingTransExecuted(actors)) {
+				nb_events++;
+				UnfoldingEvent *newEvent = new UnfoldingEvent(nb_events,
+						p.trans[0], causes);
 
-			if (not U.contains(newEvent))
-				U.insert(newEvent);
-			if (not enC.contains(newEvent))
-				enC.insert(newEvent);
-			if (not exC.contains(newEvent))
-				exC.insert(newEvent);}
+				if (not U.contains(newEvent))
+					U.insert(newEvent);
+				if (not enC.contains(newEvent))
+					enC.insert(newEvent);
+				if (not exC.contains(newEvent))
+					exC.insert(newEvent);
+			}
 
-		}
-	else {
+	} else {
+
+		// get all enabled transitions at current appState
 
 		std::set<Transition> enabledTransitions;
 		enabledTransitions = C.lastEvent->appState.getEnabledTransition();
+
+		// try to create new events from a transition and maximal events of C
 
 		for (auto trans : enabledTransitions) {
 			if (not trans.isDependent(C.lastEvent->transition))
 				continue; // don't consider this transition
 
-			EventSet exC1, his, causality_events, historyCandidate = C.maxEvent;
-			historyCandidate.erase(C.lastEvent);
+			EventSet exC1, hisCdt, causality_events, historyCandidate;
+			// in maxEvent of C, we only consider events have transitions that are dependent with trans
 
-			causality_events.insert(C.lastEvent);
-			// add causality events (events must happen to make new events occur)
-			for (auto evt: historyCandidate.events_) if (trans.actor_id == evt->transition.actor_id)
-			{ causality_events.insert(evt);
-			  historyCandidate.erase(evt);
-			  break;
+			if (trans.read_write < 2) {
+				for (auto evt : C.maxEvent.events_)
+					if (trans.isDependent(evt->transition))
+						historyCandidate.insert(evt);
+
+				historyCandidate.erase(C.lastEvent);
+				causality_events.insert(C.lastEvent);
+
+				// compute causality events (events must happen to make new events are executable)
+				// previous event in the same actor must be added to causality set
+
+				for (auto evt : historyCandidate.events_)
+					if (trans.actor_id == evt->transition.actor_id) {
+						causality_events.insert(evt);
+						historyCandidate.erase(evt);
+						break;
+					}
+
+				/* generate new events from the enabled transition and historyCandidate
+				 each subset of historyCandidate can be a history candidate*/
+				C.generateEvents(exC1, trans, causality_events, hisCdt,
+						historyCandidate);
 			}
 
+			// if trans is lock/unlock, add 2 (if possible) events to ex(C)
+			else {
 
-			//C.generateEvents(exC1, trans, C.lastEvent, his, historyCandidate);
-			C.generateEvents(exC1, trans, causality_events, his, historyCandidate);
+				bool chk = true;
+				EventSet cause;
+				for (auto evt : C.maxEvent.events_)
+					if (trans.actor_id == evt->transition.actor_id) {
+						// generate a new event that's causes includes only one event in the same actor
+
+						cause.insert(evt);
+						nb_events++;
+						UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans, cause);
+
+						///std::cout << "\n them : ";
+						//e->print();
+
+						exC.insert(e);
+						chk = false;
+
+						//std::cout << "\n vào exC \n";
+						break;
+					}
+
+				if (trans.read_write == 2) {
+
+					if (chk and trans.access_var == C.lastEvent->transition.access_var
+							and C.lastEvent->transition.read_write == 3) {
+						EventSet cause1;
+						cause1.insert(C.lastEvent);
+						nb_events++;
+						UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans,
+								cause1);
+						exC.insert(e);
+					}
+
+					// try to generate a new event that's causes includes 2 events: event in the same actor and unlock event
+					for (auto evt : C.maxEvent.events_)
+						if (trans.access_var == evt->transition.access_var
+								and evt->transition.read_write == 3
+								and trans.actor_id
+										!= evt->transition.actor_id) {
+							nb_events++;
+							cause.insert(evt);
+							UnfoldingEvent *e = new UnfoldingEvent(nb_events,
+									trans, cause);
+							exC.insert(e);
+							break;
+						}
+				}
+			}
 
 			// Extension of C = previous  extension union the events that are created from the maximal events
 			exC = exC.makeUnion(exC, exC1);
@@ -555,8 +671,24 @@ void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
 		for (auto evt : exC.events_) {
 			if (not U.contains(evt))
 				U.insert(evt);
-			if (not (evt->conflictWithConfig(C)) and not enC.contains(evt))
+
+			/* add new event evt to enC if evt's transition is not dependent with any transition of a event
+			 which is in C and is not in history of evt */
+
+			bool chk = true;
+			EventSet evtHisty = evt->getHistory();
+
+			for (auto evt1 : C.events_)
+				if (not evtHisty.contains(evt1)
+						and evt1->transition.isDependent(evt->transition)) {
+					chk = false;
+					break;
+				}
+			if (chk)
 				enC.insert(evt);
+			/*
+			 if (not (evt->conflictWithConfig(C)) and not enC.contains(evt))
+			 enC.insert(evt);*/
 		}
 
 	}
@@ -594,10 +726,6 @@ void UnfoldingChecker::explore(Configuration C, EventSet D, EventSet A,
 				e = evt;
 				break;
 			}
-
-	//if(e->id==22) std::cout<<" chon e 22 \n";
-	//if(e->id==24) std::cout<<" chon e 24 \n";
-
 	//this->getSession().execute(e->transition);
 	//currentEvt.execute(e->transition);
 	/*   e->appState = std::unique_ptr < simgrid::mc::State
@@ -656,8 +784,6 @@ void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
 	// move e from U to G if the condition is satisfied
 
 	if (not res.contains(e)) {
-		//std::cout << " removing ";
-		//e->print();
 		U.erase(e);
 		G.insert(e);
 	}

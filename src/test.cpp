@@ -191,6 +191,57 @@ int main() {
 			}
 			break;
 
+
+	case 8: { // mutex example
+		Transition t1(2, 0);
+		Transition t2(3, 0);
+
+		Transition t3(2, 0);
+		Transition t4(3, 0);
+
+		std::array<Transition, 10> trans1, trans2;
+		trans1[0] = t1;
+		trans1[1] = t2;
+
+		trans2[0] = t3;
+		trans2[1] = t4;
+		Actor p2(2, 2, trans2);
+		Actor p1(1, 2, trans1);
+
+		sa.insert(p1);
+		sa.insert(p2);
+		initState = new State(2, sa);
+	}
+	break;
+
+
+
+	case 9: { // mutex example
+		Transition t0(0, 0);
+
+		Transition t1(2, 1);
+		Transition t2(3, 1);
+
+		Transition t3(2, 1);
+		Transition t4(3, 1);
+
+		std::array<Transition, 10> trans1, trans2;
+		trans1[0] = t0;
+		trans1[1] = t1;
+		trans1[2] = t2;
+
+		trans2[0] = t3;
+		trans2[1] = t4;
+		Actor p1(1, 3, trans1);
+
+		Actor p2(2, 2, trans2);
+
+		sa.insert(p1);
+		sa.insert(p2);
+		initState = new State(2, sa);
+	}
+	break;
+
 	}
 
 
@@ -199,6 +250,6 @@ int main() {
 	e->appState = *initState;
 	UC.explore(C, D, A, e, prev_exC, sa);
 
-	std::cout << " \n finishing main() ";
+	std::cout << " \n main() finished ";
 	return 0;
 }

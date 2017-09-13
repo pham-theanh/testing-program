@@ -19,10 +19,13 @@ extern EventSet U, G;
 
 class Transition {
 public:
+
 	int actor_id = 0;
 	int id = 0;
+	//int isMutex = 0;  //  default value is not mutexed transition, 1 is lock , 2 unlock
+
 	bool executed = false;
-	int read_write = 0; // default value is read (= 0)
+	int read_write = 0; // default value is read (= 0), write =1, if mutex lock = 2, unlock = 3
 	int access_var = 0; // default this transition access variable 0
 
 	// i can be executed if only depending transition has been executed
@@ -125,6 +128,8 @@ public:
 	bool isImmediateConflict(UnfoldingEvent* other);
 	bool conflictWithConfig(Configuration config);
 
+	bool checkMutexedTransition(int mutexId);
+
 	void getEnabledTransition(std::set<Transition*>* whereto);
 	void execute();
 
@@ -137,7 +142,7 @@ class UnfoldingChecker {
 	EventSet A, D;
 	Configuration C;
 	unsigned long expandedStatesCount_ = 0;
-
+	int Mode = 1; // Mode = 1 is a mutexed model
 //  static Session& getSession();
 
 public:
@@ -148,6 +153,7 @@ public:
 	void explore1(Configuration C, EventSet D, EventSet A,
 			UnfoldingEvent *currentEvt, EventSet prev_enC,
 			std::set<Actor> proc);
+
 
 	void extend(std::set<Actor> proc, Configuration C, EventSet & ExC,
 			EventSet& enC);
