@@ -498,12 +498,7 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 
 			if (count == D.size()) {
 				J = U1;
-				/*
-				 std::cout << "\n find out a value for J: \n";
-				 for (auto evt : J.events_)
-				 evt->print();
-				 std::cout << "\n";
-				 for(auto evt : D.events_) evt->print(); std::cout<<"   \n";*/
+
 			}
 		}
 		return;
