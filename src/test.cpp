@@ -8,6 +8,9 @@
 #include "UnfoldingChecker.hpp"
 
 #include <iostream>
+#include <set>
+#include <queue>
+#include <list>
 using namespace std;
 using namespace simgrid::mc;
 
@@ -20,6 +23,9 @@ int main() {
 	Configuration C;
 	State *initState;
 	std::set<Actor> sa;
+
+    std::list<set<int> > maxEventHis;
+
 //--------------------------------
 	/*UnfoldingEvent  * ee =NULL;
 	UnfoldingEvent  ee1;
@@ -242,13 +248,42 @@ int main() {
 	}
 	break;
 
+	case 10 : { // 6th example
+			Transition t1(1, 0);
+			Transition t2(1, 0);
+
+			Transition t3(1, 1);
+			Transition t4(1, 0);
+
+			std::array<Transition, 10> trans1, trans2, trans3;
+			trans1[0] = t1;
+			trans1[1] = t2;
+
+			trans2[0] = t3;
+			trans2[1] = t4;
+			Actor p1(1, 2, trans1);
+			Actor p2(2, 2, trans2);
+
+			sa.insert(p1);
+			sa.insert(p2);
+			initState = new State(2, sa);
+		}
+		break;
+
 	}
 
 
 	initState->initialState = true;
 	UnfoldingEvent *e = new UnfoldingEvent();
 	e->appState = *initState;
-	UC.explore(C, D, A, e, prev_exC, sa);
+
+	IntSet *setInt= new IntSet();
+    std::list<IntSet* > maxEvtHistory; maxEvtHistory.push_back(setInt);
+
+
+
+
+	UC.explore(C,maxEvtHistory, D, A, e, prev_exC, sa);
 
 	std::cout << " \n main() finished ";
 	return 0;

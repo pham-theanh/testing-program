@@ -6,7 +6,7 @@
 #include <memory>
 #include <array>
 #include <set>
-
+#include<list>
 namespace simgrid {
 namespace mc {
 
@@ -14,6 +14,7 @@ class UnfoldingEvent;
 class EventSet;
 class Transition;
 class Actor;
+class IntSet;
 extern int nb_events;
 extern EventSet U, G;
 
@@ -101,12 +102,22 @@ public:
 class Configuration: public EventSet {
 public:
 	EventSet maxEvent; // Events recently added to events_
+	//std::list<std::set<int> > *maxEventHis;// store history of maxEvent
+
 	UnfoldingEvent * lastEvent; // The last added event
 	void getEnabledTransition(std::set<Transition> whereto);
 	Configuration plus(UnfoldingEvent *);
-	void generateEvents(EventSet& result, Transition t, EventSet causuality_events,
+	void createEvt(EventSet& result, Transition t, EventSet causuality_events,
 			EventSet cause, EventSet candidateHistory);
 	void updateMaxEvent(UnfoldingEvent *);
+
+};
+class IntSet{
+public:
+ std::set<int> ints;
+  IntSet(){};
+  void insert(int e);
+  bool inculude(IntSet other);
 
 };
 
@@ -146,16 +157,12 @@ class UnfoldingChecker {
 //  static Session& getSession();
 
 public:
-	void explore(Configuration C, EventSet D, EventSet A,
-			UnfoldingEvent *currentEvt, EventSet prev_enC,
-			std::set<Actor> proc);
-
-	void explore1(Configuration C, EventSet D, EventSet A,
+	void explore(Configuration C, std::list<IntSet*> maxEvtHistory, EventSet D, EventSet A,
 			UnfoldingEvent *currentEvt, EventSet prev_enC,
 			std::set<Actor> proc);
 
 
-	void extend(std::set<Actor> proc, Configuration C, EventSet & ExC,
+	void extend(std::set<Actor> proc, Configuration C, std::list<IntSet*> maxEvtHistory, EventSet & ExC,
 			EventSet& enC);
 	void remove(UnfoldingEvent *e, Configuration C, EventSet D);
 	void computeAlt(EventSet& J, EventSet D, Configuration C, EventSet U1,
