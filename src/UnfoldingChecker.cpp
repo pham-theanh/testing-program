@@ -93,6 +93,7 @@ State State::execute(Transition t) {
 	sp = this->actors;
 	sp1 = this->actors;
 
+	// update the status of the actors for State, just marked "executed" for the executing transition(t)
 	for (auto p : sp)
 		if (p.id == t.actor_id) {
 			sp1.erase(p);
@@ -199,6 +200,10 @@ EventSet EventSet::makeUnion(EventSet s1, EventSet s2) {
 	EventSet res;
 	res.events_.insert(s1.events_.begin(), s1.events_.end());
 	res.events_.insert(s2.events_.begin(), s2.events_.end());
+	for (auto evt : s1.events_)
+		res.insert(evt);
+	//for (auto evt:s2.events_) res.insert(evt);
+
 	return res;
 }
 
@@ -234,14 +239,6 @@ Configuration Configuration::plus(UnfoldingEvent *evt) {
 	res.events_ = this->events_;
 	res.maxEvent = this->maxEvent;
 
-//	std::list<std::set<int> > l ;
-//	std::set<int> si; si.insert(111); si.insert(133);
-
-	//for (auto it : *(this->maxEventHis) ) l.push_back(it);
-	//l= (this->maxEventHis);
-
-	//res.maxEventHis = &l;
-	//res.maxEventHis = this->maxEventHis;
 	res.events_.insert(evt);
 	return res;
 }
@@ -268,7 +265,8 @@ bool EventSet::operator==(const EventSet& other) const {
 
 }
 void EventSet::insert(UnfoldingEvent* e) {
-	events_.insert(e);
+	if (not this->contains(e))
+		events_.insert(e);
 }
 
 void EventSet::erase(UnfoldingEvent *e) {
@@ -371,6 +369,12 @@ bool UnfoldingEvent::isConflict(UnfoldingEvent* otherEvent) {
 
 bool UnfoldingEvent::isImmediateConflict(UnfoldingEvent *evt2) {
 
+	UnfoldingEvent *e = new UnfoldingEvent(this->id, this->transition,
+			this->causes);
+	// event e should not conflict with itself
+	if (*e == *evt2)
+		return false;
+
 	// The first condition is easy to check
 	if (not isConflict(evt2))
 		return false;
@@ -383,10 +387,12 @@ bool UnfoldingEvent::isImmediateConflict(UnfoldingEvent *evt2) {
 		for (auto e2 : hist2.events_)
 			if (e1->isConflict(e2))
 				return false; // hist1 U hist2 is not a config => no immediate conflict
+
 	// Compare the first config to the second new event
 	for (auto e1 : hist1.events_)
 		if (e1->isConflict(evt2))
 			return false;
+
 	// Compare the second config to the first new event
 	for (auto e2 : hist2.events_)
 		if (e2->isConflict(this))
@@ -399,18 +405,12 @@ bool UnfoldingEvent::isImmediateConflict(UnfoldingEvent *evt2) {
 // checking conflict relation between one event and one configuration or one history, it used when computing enC
 // there is a better way by checking the event with maximal events in the configuration, (change type of enC )
 bool UnfoldingEvent::conflictWithConfig(Configuration config) {
-	// TODO: we don't really need to check the whole config. The maximal event should be enough.
+	// we don't really need to check the whole config. The maximal event should be enough.
 	for (auto evt : config.maxEvent.events_)
 		if (this->isConflict(evt))
 			return true;
 	return false;
 }
-
-/*    void UnfoldingEvent::getEnabledTransition(std::set<Transition*>* whereto) {
- THROW_UNIMPLEMENTED
- ;
- // FIXME
- }*/
 
 // this operator is used for ordering in a set (need a key)
 bool UnfoldingEvent::operator<(const UnfoldingEvent& other) const {
@@ -427,14 +427,6 @@ bool UnfoldingEvent::operator==(const UnfoldingEvent& other) const {
 			&& (this->transition.id == other.transition.id)
 			&& (this->causes == other.causes));
 
-}
-
-/*   void Configuration::getEnabledTransition(std::set<Transition*>* whereto) {
- for (auto e : maxEvent)
- e.getEnabledTransition(whereto);
- }*/
-
-void Configuration::getEnabledTransition(std::set<Transition> whereto) {
 }
 
 void Configuration::updateMaxEvent(UnfoldingEvent *e) {
@@ -459,7 +451,7 @@ bool Transition::operator==(const Transition& other) const {
 	return ((this->id == other.id) && (this->actor_id == other.actor_id));
 
 }
-/* this function is used to create new events from a candidate history, by iterating all subset of candidate
+/* this function is used to create new events from a candidate history, by iterating all subset of the candidate
  */
 
 void Configuration::createEvt(EventSet& result, Transition t,
@@ -498,6 +490,9 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 		return;
 
 	if (Uc.empty()) {
+		/* U1 is a subset of U, we cheking that C1 \union U1 is configuration ?
+		 and for all e \in D, exist e' \in  (C1 \union U1): e' immediate  conflict with e
+		 */
 		EventSet C1 = C.makeUnion(C, U1);
 
 		if (C1.isConfig()) {
@@ -505,7 +500,6 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 			for (auto evt : D.events_)
 				for (auto evt1 : C1.events_)
 					if (evt->isImmediateConflict(evt1) and U.contains(evt1)) {
-
 						count++;
 						break;
 					}
@@ -536,27 +530,6 @@ void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
 
 }
 
-/*bool UnfoldingEvent::checkMutexedTransition(int access_var) {
- int nbLock = 0, nbUnlock = 0;
- EventSet evtHisty = this->getHistory();
- for (auto evt : evtHisty.events_)
- if (evt->transition.access_var == access_var)
- if (evt->transition.read_write == 2)
- nbLock++;
- else if (evt->transition.read_write == 3)
- nbUnlock++;
-
- if (this->transition.access_var == access_var)
- if (this->transition.read_write == 2)
- nbLock++;
- else if (this->transition.read_write == 3)
- nbUnlock++;
-
- if (nbLock <= nbUnlock)
- return true;
- return false;
- }*/
-
 void IntSet::insert(int e) {
 	this->ints.insert(e);
 }
@@ -572,6 +545,7 @@ bool IntSet::inculude(IntSet other) {
 
 /* this function collect all events (in maximal events of C)
  whose transitions are dependent with trans, And then it compute history candidate for trans */
+
 void generateEvt(EventSet& exC1, Configuration C, Transition trans) {
 	EventSet hisCdt, causalityEvts, historyCandidate;
 	for (auto evt : C.maxEvent.events_)
@@ -633,15 +607,18 @@ EventSet computeEx(Configuration C, std::list<IntSet *> maxEvtHistory,
 			// remove evt from evtSet if that evt's transition are not depent with trans
 			EventSet exC1;
 			C.createEvt(exC1, trans, causalityEvts, hisCdt, evtSet);
-			for (auto evt : exC1.events_) {
-				std::cout << " tao ra :\n";
-				evt->print();
-				std::cout << " >>>>>>>>\n";
-			}
+
+			/*			for (auto evt : exC1.events_) {
+			 std::cout << " tao ra :\n";
+			 evt->print();
+			 std::cout << " >>>>>>>>\n";
+			 }*/
+
 			exC = exC.makeUnion(exC, exC1);
 		}
 
 	}
+
 	return exC;
 
 }
@@ -676,7 +653,7 @@ void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
 
 		for (auto trans : enabledTransitions) {
 			if (not trans.isDependent(C.lastEvent->transition))
-				continue; // don't consider this transition
+				continue; // don't consider this transition, since new events are already created
 
 			EventSet exC1, hisCdt, causalityEvts, historyCandidate; // in maxEvent of C, we only consider events have transitions that are dependent with trans
 
@@ -695,59 +672,12 @@ void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
 					}
 				std::list<IntSet*> maxEvtHistory1 = maxEvtHistory;
 				maxEvtHistory1.pop_back();
-				exC1 = exC1.makeUnion(exC1,computeEx(C, maxEvtHistory1, trans, causalityEvts));
+				exC1 = exC1.makeUnion(exC1,
+						computeEx(C, maxEvtHistory1, trans, causalityEvts));
 
 			}
 
-			// if trans is lock/unlock, add 2 (if possible) events to ex(C)
-			else {
 
-				bool chk = true;
-				EventSet cause;
-				for (auto evt : C.maxEvent.events_)
-					if (trans.actor_id == evt->transition.actor_id) {
-						// generate a new event that's causes includes only one event in the same actor
-
-						cause.insert(evt);
-						nb_events++;
-						UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans,
-								cause);
-						exC.insert(e);
-						chk = false;
-						break;
-					}
-
-				if (trans.read_write == 2) {
-
-					if (chk
-							and trans.access_var
-									== C.lastEvent->transition.access_var
-							and C.lastEvent->transition.read_write == 3) {
-						EventSet cause1;
-						cause1.insert(C.lastEvent);
-						nb_events++;
-						UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans,
-								cause1);
-						exC.insert(e);
-					}
-
-					// try to generate a new event that's causes includes 2 events: event in the same actor and unlock event
-					for (auto evt : C.maxEvent.events_)
-						if (trans.access_var == evt->transition.access_var
-								and evt->transition.read_write == 3
-								and trans.actor_id
-										!= evt->transition.actor_id) {
-							nb_events++;
-							cause.insert(evt);
-							UnfoldingEvent *e = new UnfoldingEvent(nb_events,
-									trans, cause);
-							exC.insert(e);
-							break;
-						}
-				}
-			}
-
-			// Extension of C = previous  extension union the events that are created from the maximal events
 			exC = exC.makeUnion(exC, exC1);
 
 		}
@@ -784,53 +714,47 @@ void UnfoldingChecker::explore(Configuration C,
 	exC.erase(currentEvt);
 
 	// exC = previous exC - currentEvt + new events
-
 	extend(actors, C, maxEvtHistory, exC, enC);
+
+	// should to change this condition based on 2nd paper of César, return when enC \subset of D
 
 	if (enC.empty()) {
 		std::cout << " exploring executions :\n";
 		for (auto evt : C.events_) {
-			std::cout << " --> ";
+			std::cout << " \\\\\\\\\\\\\\\\\\\\\\\\--> ";
 			evt->print();
 		}
 		std::cout << "\n\n";
 
-		/*std::cout << " \n hien thi history----\n";
-		for (auto it : maxEvtHistory) {
-			for (auto it1 : it->ints)
-				std::cout << it1 << "   ";
-			std::cout << "\n";
-		}
-		std::cout << " \n=============================\n";*/
-
 		return;
 	}
 
-	if (A.empty())
-	{	e = enC.begin();
-		for (auto evt: enC.events_) if (evt->transition.actor_id < e->transition.actor_id) e = evt;
-	}
-	else
+	if (A.empty()) {
+		e = enC.begin();
+		for (auto evt : enC.events_)
+			if (evt->transition.actor_id < e->transition.actor_id) {
+				std::cout << "thay vi chon thang " << e->id << "lai chon thang "<< evt->id << "\n";
+				e = evt;
+			}
+	} else
 		// if A is not empty, chose one event in the intersection of A and enC
 		for (auto evt : A.events_)
 			if (enC.contains(evt)) {
 				e = evt;
 				break;
 			}
-	/*this->getSession().execute(e->transition);
-	 e->appState = std::unique_ptr < simgrid::mc::State>
-	 (new simgrid::mc::State(++expandedStatesCount_));
-	 */
 
-	State newState = currentEvt->appState.execute(e->transition);
-	e->appState = newState;
+std::cout<<" exploring e ="; e->print();
+
+	State nextState = currentEvt->appState.execute(e->transition);
+	e->appState = nextState;
 
 	// UnfoldingEvent* newEvent = e + e.transition;
 
 	Configuration C1 = C.plus(e);
 	C1.updateMaxEvent(e);
 
-	// update history of the maximal events
+	// update history of the maximal events by adding maximal events of the current Configuration (adding intSet)
 
 	std::list<IntSet*> maxEvtHistory1 = maxEvtHistory;
 	IntSet *intSet = new IntSet();
@@ -842,7 +766,7 @@ void UnfoldingChecker::explore(Configuration C,
 
 	maxEvtHistory1.push_back(intSet);
 
- 	//end update history of the maximal events
+	//end update history of the maximal events
 
 	explore(C1, maxEvtHistory1, D, A.minus(e), e, exC.minus(e), actors);
 	EventSet J, U1;
@@ -850,7 +774,15 @@ void UnfoldingChecker::explore(Configuration C,
 
 	computeAlt(J, D.plus(e), C, U1, Uc);
 
+
+
 	if (not J.empty()) {
+
+	/*	std::cout
+				<< "\n========================================>found a alterlative\n";
+		for (auto evt : J.events_)
+			evt->print();
+		std::cout << "\n========================================>end \n";*/
 
 		EventSet dif;
 		std::set_difference(J.events_.begin(), J.events_.end(),
@@ -860,6 +792,7 @@ void UnfoldingChecker::explore(Configuration C,
 		explore(C, maxEvtHistory, D.plus(e), dif, currentEvt, prev_exC.minus(e),
 				actors);
 	}
+
 
 	remove(e, C, D);
 
@@ -871,18 +804,26 @@ void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
 	unionSet = unionSet.makeUnion(C, D);
 
 	// building Qcdu
-	for (auto e1 : U.events_)
+	for (auto e1 : U.events_){
 		for (auto e2 : unionSet.events_) {
-			if (e1->isImmediateConflict(e2))
-				// add e1 which is immediate conflict with one event in C u D to res
+			// add e1 which is immediate conflict with one event in C u D to res
+			if (e1->isImmediateConflict(e2)) {
 				res.insert(e1);
-			break;
+				break;
+			}
 		}
 
-	for (auto e1 : res.events_) {
+}
+
+	res1 = res;
+	for (auto e1 : res1.events_) {
+		//std::cout <<" lay history cho "<<e1->id <<" \n";
 		EventSet h = e1->getHistory();
 		res = res.makeUnion(res, h);
+		//std::cout <<" lay xong history cho "<<e1->id <<" \n";
+
 	}
+
 
 	res = res.makeUnion(res, unionSet);
 	// move e from U to G if the condition is satisfied
@@ -892,28 +833,26 @@ void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
 		G.insert(e);
 	}
 
-	// move history of ê from U to G
-	EventSet U1 = U;
-	for (auto evt : U1.events_)
-		if (evt->isImmediateConflict(e)) {
 
-			EventSet h = evt->getHistory();
-			h.insert(evt);
+		// move history of ê from U to G
+	 EventSet U1 = U;
+	 for (auto evt : U1.events_)
+	 if (evt->isImmediateConflict(e)) {
 
-			for (auto e2 : h.events_)
-				if (not res.contains(e2)) {
+	 EventSet h = evt->getHistory();
+	 h.insert(evt);
 
-					U.erase(e2);
-					G.insert(e2);
-				}
+	 for (auto e2 : h.events_)
+	 if (not res.contains(e2)) {
 
-		}
+	 U.erase(e2);
+	 G.insert(e2);
+	 }
+
+	 }
 
 }
 
-/*    Checker* createUnfoldingChecker(Session& session) {
- return new UnfoldingChecker(session);
- }*/
 }
 }
 
