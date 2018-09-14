@@ -3,530 +3,316 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <unistd.h>
 //#include "src/mc/mc_state.h"
 
 #include "UnfoldingChecker.hpp"
-//#include "xbt/ex.h"
-//#include "xbt/asserts.h"
 
-namespace simgrid {
-namespace mc {
-int nb_events;
-EventSet U, G;
-//class UnfoldingEvent;
+unsigned int nb_events=0;
+unsigned int nb_traces=0;
+int comId = -1;
+EventSet U, G, gD;
 
-Transition::Transition(int read_write, int access_var) {
-	this->read_write = read_write;
-	this->access_var = access_var;
-}
+/*void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
+ EventSet U1, EventSet Uc) {
+ if (not J.empty())
+ return;
 
-void Transition::execute() {
-	executed = true;
-}
+ if (Uc.empty()) {
+ U1 is a subset of U, we cheking that C1 \union U1 is configuration ?
+ and for all e \in D, exist e' \in  (C1 \union U1): e' immediate  conflict with e
 
-bool Transition::isDependingTransExecuted(std::set<Actor> actors) {
-	if (this->depending_actor < 0)
-		return true;
-	for (auto act : actors)
-		if (act.id == this->actor_id) {
-			if (act.trans[this->depending_tran].executed)
-				return true;
-			break;
+ EventSet C1 = C.makeUnion(C, U1);
 
-		}
-	std::cout << " thang t" << this->id << "-p" << this->actor_id
-			<< " phu thuoc vao t" << this->depending_tran << "p"
-			<< this->depending_actor << " \n";
-	std::cout << " return false \n";
-	return false;
-}
+ if (C1.isConfig()) {
+ size_t count = 0;
+ for (auto evt : D.events_)
+ for (auto evt1 : C1.events_)
+ if (evt->isImmediateConflict(evt1) and U.contains(evt1)) {
+ count++;
+ break;
+ }
 
-bool Transition::isDependent(Transition other) {
-	int Mode = 0;  // Mode ==1-> mutexed model
-	if (this->actor_id == other.actor_id)
-		return true;
+ if (count == D.size()) {
+ J = U1;
 
-	//FIXME change value of Mode when changing the model
-	if (Mode == 1 and this->read_write < 2)
-		return false;
+ }
+ }
+ std::cout<<"\n return nhe ==================\n";
+ return;
+ }
 
-	// check mutexed transitions
-	if (this->access_var == other.access_var) {
-		if ((this->read_write >= 2 and other.read_write >= 2)) {
-			return true;
-		}
-	}
+ else {
+ UnfoldingEvent *a = Uc.begin();
+ EventSet evtSet1, evtSet2, evtSet3, evtSet4;
+ evtSet1 = U1;
+ evtSet3 = Uc;
+ evtSet1.insert(a);
+ evtSet3.erase(a);
+ computeAlt(J, D, C, evtSet1, evtSet3);
 
-	// check not mutexed transitions
-	if (this->access_var == other.access_var) {
-		if ((this->read_write == 1) or (other.read_write == 1)) {
-			return true;
-		}
-	}
-	return false;
-}
+ evtSet2 = U1;
+ evtSet4 = Uc;
+ evtSet4.erase(a);
 
-Actor::Actor(int id, int nb_trans, std::array<Transition, 10> &trans) {
-	this->id = id;
-	this->nb_trans = nb_trans;
-	this->trans = trans;
-	int tid = 0;
+ computeAlt(J, D, C, evtSet2, evtSet4);
+ }
 
-	for (int i = 0; i < nb_trans; i++) {
-		this->trans[i].id = tid++;
-		this->trans[i].actor_id = id;
-
+ }*/
+void intTobinary(int n, int p[]) {
+	int i = 0;
+	while (n != 0) {
+		p[i] = n % 2;
+		i++;
+		n = n / 2;
 	}
 
 }
 
-bool Actor::operator<(const Actor& other) const {
-	return (this->id < other.id);
+EventSet UnfoldingChecker::filter(Configuration C, EventSet U) {
+	EventSet evtS;
+	for (auto evt : U.events_)
+		if (not evt->conflictWithConfig(evt,C))
+			evtS.insert(evt);
+
+	return evtS;
+
 }
 
-State::State(int nb_actor, std::set<Actor> actors) {
-	this->nb_actor = nb_actor;
-	this->actors = actors;
-}
-State State::execute(Transition t) {
-	std::set<Actor> sp, sp1;
-	sp = this->actors;
-	sp1 = this->actors;
 
-	// update the status of the actors for State, just marked "executed" for the executing transition(t)
-	for (auto p : sp)
-		if (p.id == t.actor_id) {
-			sp1.erase(p);
-			p.trans[t.id].executed = true;
-			sp1.insert(p);
+/* this function select one event in every EventSet in a list to form a set,
+ *  if they are not conflict with each other -> return the set J
+ */
 
+void ksubset(int sizeD, std::list<UnfoldingEvent*> EvtList,
+		std::list<EventSet> list, int n, EventSet & J) {
+
+
+	if (J.size() > 0)
+		return;
+
+	std::list<UnfoldingEvent*> EvtList1 = EvtList;
+	std::list<UnfoldingEvent*> EvtList2;
+
+	if (list.size() > 0) {
+
+		EventSet intS = list.back();
+
+		std::list<EventSet> list1 = list;
+		list1.pop_back();
+
+		int inter = 0;
+		for (auto it : intS.events_) {
+
+			bool check = false;
+			for (auto evt : EvtList1)
+				if (it->isConflict(it, evt)) {
+					check = true;
+					break;
+				}
+			if (check)
+				continue;
+
+			// if inter > 0 intS already has a presentative, pop the old one and add the new one
+
+			if (inter > 0)
+				EvtList1.pop_back();
+			EvtList1.push_back(it);
+
+
+			if (n == sizeD - 1) {
+				int chk = true;
+
+				//check there is no conflict between 2 events in the list
+				/*	std::list<UnfoldingEvent*> EvtList2 = EvtList1;
+				 for (auto it1 : EvtList1) for (auto it2 : EvtList2)
+				 if (it1->isConflict(it2))
+				 { chk = false; break;}
+				 */
+
+				//if (chk )
+				if (EvtList1.size() == sizeD) {
+					for (auto evt : EvtList1)
+						J.insert(evt);
+					return;
+				}
+			}
+
+			if (J.size() == 0)
+				ksubset(sizeD, EvtList1, list1, n + 1, J);
+			inter++;
 		}
-
-	State nextState(this->nb_actor, sp1);
-
-	return nextState;
+	}
+//	std::cout << " \n finish ksubset \n";
 }
 
-std::set<Transition> State::getEnabledTransition() {
+EventSet UnfoldingChecker::KpartialAlt(EventSet D, Configuration C) {
 
-	std::set<Transition> set_t;
-	for (auto p : this->actors)
-		for (int j = 0; j < p.nb_trans; j++)
-			if (not p.trans[j].executed) {
-				//if (p.trans[j].isDependingTransExecuted(actors))
-				if (p.trans[j].read_write < 2)
-					set_t.insert(p.trans[j]);
-				// if p.trans[j] if lock transition, make sure that only one lock can occupy one mutex
 
-				else {
-					bool chk = true;
-					for (auto trans : set_t)
-						if (trans.access_var == p.trans[j].access_var
-								and trans.read_write == 2
-								and p.trans[j].read_write == 2) {
-							chk = false;
-							break;
-						}
-					if (chk)
-						set_t.insert(p.trans[j]);
+	EventSet J, J1, emptySet, result;
+	std::list<EventSet> kSet;
+
+	/*for each evt in D, add all evt1 in U that is conflict with evt to a set(spike) */
+
+	for (auto evt : D.events_) {
+		EventSet evtSet;
+		for (auto evt1 : U.events_)
+			if (evt->isConflict(evt,evt1))	evtSet.insert(evt1);
+
+		kSet.push_back(evtSet);
+
+	}
+
+	std::list<EventSet> kSet1;
+
+	if (kSet.size() < D.size()) {
+//		std::cout << "there is no optimal solution (no alternative) 1";
+		return emptySet;
+	}
+
+	else {
+
+
+// for each spike, remove all evt whose [evt] is conflict with C
+		for (auto it : kSet) {
+			EventSet evtS = it;
+
+
+			for (auto evt : it.events_)
+			{
+
+				EventSet subC , sub_history , history = evt->getHistory(); history.insert(evt);
+
+	/*			subC = C;
+				sub_history = history;
+
+				// remove all common events
+
+				for(auto evt1: C.events_) if (history.contains(evt1)) {subC.erase(evt1); sub_history.erase(evt1);}
+
+			if ( (! history.isEmptyIntersection(history,D)) or  (subC.depends(sub_history)))*/
+
+				bool chk = false;
+
+				if ( not history.isEmptyIntersection(history,D)){
+
+					chk = true;
+					//if (evt->id == 29)std::cout <<"\n va chk =" << chk <<" \n";
 
 				}
+				else for(auto it1: C.events_) if(it1->isConflict(it1,evt)) { chk= true; break;}
 
-				break;
+				//if (evt->id == 29)std::cout<<" sau khi kt dk chk =" << chk << " \n";
+
+					if(chk)	{ //if (evt->id == 29)std::cout<<" se xoa thang 29 nhe chk =" << chk << " \n";
+					evtS.erase(evt);
+
+					}
+
 			}
 
-	return set_t;
-}
 
-void State::print() {
-	std::cout << "s = (";
-	for (auto p : this->actors)
-		for (int j = 0; j < p.nb_trans; j++)
-			if (p.trans[j].executed)
-				std::cout << "t" << j << "-p" << p.id << " is executed";
-	std::cout << ")";
+			if (evtS.empty()) {
 
-}
-
-/*
- bool EventSet::contains(UnfoldingEvent *e) {
- return events_.find(e) != events_.end();
- }
- */
-
-bool EventSet::contains(UnfoldingEvent *e) {
-	for (auto evt : this->events_)
-		if (*evt == *e)
-			return true;
-	return false;
-}
-
-/** @brief Check if I'm dependent with another EventSet */
-bool EventSet::depends(EventSet s2) {
-
-	for (auto e1 : this->events_)
-		for (auto e2 : s2.events_)
-			if (*e1 == *e2)
-				continue;
-			else if (e1->transition.isDependent(e2->transition))
-				return true;
-
-	return false;
-}
-
-bool EventSet::isConfig() {
-	if ((this->size() == 1) && (this->begin()->causes.empty()))
-		return true;
-
-	// checking conflict relation between one event and all other events in the set
-	for (auto e1 : events_) {
-		for (auto e2 : events_) {
-			if (e1 == e2)
-				continue;
-
-			if (e1->isConflict(e2))
-				return false;
-		}
-		// Every event of the history should be in the set
-		for (auto ancestor : e1->getHistory().events_)
-			if (not (this->contains(ancestor)))
-				return false;
-	}
-
-	return true;
-}
-
-EventSet EventSet::makeUnion(EventSet s1, EventSet s2) {
-	EventSet res;
-	res.events_.insert(s1.events_.begin(), s1.events_.end());
-	res.events_.insert(s2.events_.begin(), s2.events_.end());
-	for (auto evt : s1.events_)
-		res.insert(evt);
-	//for (auto evt:s2.events_) res.insert(evt);
-
-	return res;
-}
-
-EventSet EventSet::makeIntersection(EventSet s1, EventSet s2) {
-	EventSet res;
-	std::set_intersection(s1.events_.begin(), s1.events_.end(),
-			s2.events_.begin(), s2.events_.end(),
-			std::inserter(res.events_, res.events_.begin()));
-	return res;
-}
-
-EventSet EventSet::minus(UnfoldingEvent *evt) {
-
-	EventSet res;
-	res.events_ = this->events_;
-	for (auto e : res.events_)
-		if (*e == *evt)
-			res.erase(e);
-
-	return res;
-}
-
-EventSet EventSet::plus(UnfoldingEvent *evt) {
-	EventSet res;
-	res.events_ = this->events_;
-	res.events_.insert(evt);
-	return res;
-}
-
-Configuration Configuration::plus(UnfoldingEvent *evt) {
-	Configuration res;
-
-	res.events_ = this->events_;
-	res.maxEvent = this->maxEvent;
-
-	res.events_.insert(evt);
-	return res;
-}
-
-size_t EventSet::size() {
-	return events_.size();
-}
-
-bool EventSet::empty() const {
-	return this->events_.empty();
-}
-
-UnfoldingEvent* EventSet::begin() const {
-	return *events_.begin();
-}
-
-UnfoldingEvent* EventSet::end() const {
-	return *events_.end();
-}
-
-bool EventSet::operator==(const EventSet& other) const {
-
-	return this->events_ == other.events_;
-
-}
-void EventSet::insert(UnfoldingEvent* e) {
-	if (not this->contains(e))
-		events_.insert(e);
-}
-
-void EventSet::erase(UnfoldingEvent *e) {
-	this->events_.erase(e);
-}
-
-UnfoldingEvent::UnfoldingEvent(int nb_events, Transition t, EventSet causes) {
-
-	this->id = nb_events;
-	this->causes = causes;
-	this->transition = t;
-}
-
-void UnfoldingEvent::print() {
-
-	std::cout << "e" << this->id << " =  < t" << this->transition.id << "-p"
-			<< this->transition.actor_id << "," << "(";
-	if (this->causes.empty())
-		std::cout << "-) >";
-	else {
-		for (auto evt : this->causes.events_)
-			std::cout << "e" << evt->id << ",";
-		std::cout << " ) >";
-	}
-
-}
-
-// Recursively compute the history of a given event by adding the causes of all ancestors
-EventSet UnfoldingEvent::getHistory() const {
-	if (causes.empty()) // No direct ancestor => empty history
-		return causes;
-	else {
-		EventSet res = causes;
-		for (auto ancestor : causes.events_) {
-			EventSet h1 = ancestor->getHistory();
-			//res.events_.insert(h1.begin(), h1.end());
-			res = res.makeUnion(res, h1);
-		}
-		return res;
-	}
-}
-
-/** @brief check for conflict in the history of current and provided events
- *
- * In the paper, this.isConflict(other) is written "this # other"
- */
-
-bool UnfoldingEvent::isConflict(UnfoldingEvent* otherEvent) {
-	UnfoldingEvent *e = new UnfoldingEvent(this->id, this->transition,
-			this->causes);
-	// event e should not conflict with itself
-	if (*e == *otherEvent)
-		return false;
-
-	EventSet h1, h2;
-	h1 = this->getHistory();
-	h2 = otherEvent->getHistory();
-
-	// checking causality relation, if they are in a causality relation return false
-	if (h1.contains(otherEvent))
-		return false;
-
-	if (h2.contains(e))
-		return false;
-
-	// check direct conflict
-	if (this->transition.isDependent(otherEvent->transition))
-		return true;
-	//  if 2 event they have the same causes, just check their last transition
-	if (causes == otherEvent->causes)
-		return this->transition.isDependent(otherEvent->transition);
-
-	// if not, then check dependent relation on their full histories
-
-	else {
-		h1.insert(e);
-		h2.insert(otherEvent);
-		EventSet his = h1;
-		//FIXME remove all common events
-		for (auto evt : his.events_)
-			if (h2.contains(evt)) {
-				h1.erase(evt);
-				h2.erase(evt);
+				//std::cout << "there is no optimal solution (no alternative)";
+				return emptySet;
 			}
-		return h1.depends(h2);
 
-	}
-	return false;
-}
+			kSet1.push_back(evtS);
+		}
 
-/** @brief Checks if current event is in immediate conflict with the provided one
- *
- * For that, there is two conditions to meet:
- *  - both events are in conflict (there is a conflict in their histories)
- *  -      Union(hist1,       hist2, evt2) is a valid configuration
- *    AND  Union(hist1, evt1, hist2)       is a valid configuration
- *
- * In the paper, e1.isImmediate(e2) will be written "e1 #ⁱ e2"
- */
 
-bool UnfoldingEvent::isImmediateConflict(UnfoldingEvent *evt2) {
+// building J by chosing one event in each spike such that there are not 2 conflict events in J
+		int n = 0;
+		std::list<UnfoldingEvent*> EvtList;
 
-	UnfoldingEvent *e = new UnfoldingEvent(this->id, this->transition,
-			this->causes);
-	// event e should not conflict with itself
-	if (*e == *evt2)
-		return false;
-
-	// The first condition is easy to check
-	if (not isConflict(evt2))
-		return false;
-	// Now, check the second condition
-	EventSet hist1 = this->getHistory();
-	EventSet hist2 = evt2->getHistory();
-
-	// First compare the existing configurations
-	for (auto e1 : hist1.events_)
-		for (auto e2 : hist2.events_)
-			if (e1->isConflict(e2))
-				return false; // hist1 U hist2 is not a config => no immediate conflict
-
-	// Compare the first config to the second new event
-	for (auto e1 : hist1.events_)
-		if (e1->isConflict(evt2))
-			return false;
-
-	// Compare the second config to the first new event
-	for (auto e2 : hist2.events_)
-		if (e2->isConflict(this))
-			return false;
-
-	// Every tests passed
-	return true;
-}
-
-// checking conflict relation between one event and one configuration or one history, it used when computing enC
-// there is a better way by checking the event with maximal events in the configuration, (change type of enC )
-bool UnfoldingEvent::conflictWithConfig(Configuration config) {
-	// we don't really need to check the whole config. The maximal event should be enough.
-	for (auto evt : config.maxEvent.events_)
-		if (this->isConflict(evt))
-			return true;
-	return false;
-}
-
-// this operator is used for ordering in a set (need a key)
-bool UnfoldingEvent::operator<(const UnfoldingEvent& other) const {
-	if ((this->transition.actor_id < other.transition.actor_id)
-			or (this->transition.id < other.transition.id)
-			or (not (this->causes == other.causes)))
-		return true;
-	return false;
-}
-
-/** @brief check semantic equality (same transition, same causes) */
-bool UnfoldingEvent::operator==(const UnfoldingEvent& other) const {
-	return ((this->transition.actor_id == other.transition.actor_id)
-			&& (this->transition.id == other.transition.id)
-			&& (this->causes == other.causes));
-
-}
-
-void Configuration::updateMaxEvent(UnfoldingEvent *e) {
-	this->lastEvent = e;
-	// removing only the causes is enough
-
-	for (auto evt : e->causes.events_) {
-		maxEvent.erase(evt); //setMaxEvents.erase(evt->id);
-
+		ksubset(D.size(), EvtList, kSet1, n, J1);
 	}
 
-	maxEvent.insert(e);
-}
+	// J1.size() can be < D.size() since one event in J1 can be conflict with some events in D
 
-bool Transition::operator<(const Transition& other) const {
+	if (J1.size() == 0) {
 
-	return ((this->id < other.id) || (this->actor_id < other.actor_id));
-
-}
-bool Transition::operator==(const Transition& other) const {
-
-	return ((this->id == other.id) && (this->actor_id == other.actor_id));
-
-}
-/* this function is used to create new events from a candidate history, by iterating all subset of the candidate
- */
-
-void Configuration::createEvt(EventSet& result, Transition t,
-		EventSet causuality_events, EventSet cause, EventSet candidateHistory) {
-	if (candidateHistory.empty()) {
-
-		nb_events++;
-		EventSet cause1 = cause;
-		//cause1.insert(preEvt);
-		cause1 = cause1.makeUnion(cause1, causuality_events);
-		UnfoldingEvent *e = new UnfoldingEvent(nb_events, t, cause1);
-		result.insert(e);
-
-		return;
+		std::cout << "there is no optimal solution (no alternative) J1 size = "
+				<< J1.size() << " \n";
+		return emptySet;
 	}
 
-	else {
-		UnfoldingEvent *a = candidateHistory.begin();
-		EventSet evtSet1, evtSet2, evtSet3, evtSet4;
-		evtSet1 = cause;
-		evtSet3 = candidateHistory;
-		evtSet1.insert(a);
-		evtSet3.erase(a);
-		createEvt(result, t, causuality_events, evtSet1, evtSet3);
-		evtSet2 = cause;
-		evtSet4 = candidateHistory;
-		evtSet4.erase(a);
-		createEvt(result, t, causuality_events, evtSet2, evtSet4);
+	else
+
+	{
+
+		for (auto evt : J1.events_) {
+			EventSet history = evt->getHistory();
+			J = J.makeUnion(J, history);
+			J.insert(evt);
+		}
 	}
+
+//	std::cout <<"\n ---->>> end kpartial \n";
+
+	return J;
 
 }
 
-void UnfoldingChecker::computeAlt(EventSet& J, EventSet D, Configuration C,
-		EventSet U1, EventSet Uc) {
-	if (not J.empty())
-		return;
 
-	if (Uc.empty()) {
-		/* U1 is a subset of U, we cheking that C1 \union U1 is configuration ?
-		 and for all e \in D, exist e' \in  (C1 \union U1): e' immediate  conflict with e
-		 */
+
+EventSet UnfoldingChecker::computeAlt(EventSet D, Configuration C) {
+
+	/* U1 is a subset of U, we cheking that C1 \union U1 is configuration ?
+	 and for all e \in D, exist e' \in  (C1 \union U1): e' immediate  conflict with e
+	 */
+
+	/*instead of using U we use Uc = U \ C -> in expore we replace J \ C by J*/
+
+
+	EventSet Uc = U;
+
+	int nbsubset = pow(2, Uc.size());
+
+	for (auto i = 1; i < nbsubset; i++) {
+
+		int B[Uc.size()];
+		EventSet U1;
+		int k = 0;
+
+		for (int i = 0; i < Uc.size(); i++)
+			B[i] = 0;
+
+		intTobinary(i, B);
+
+		for (auto it : Uc.events_) {
+			if (B[k] == 1)
+				U1.insert(it);
+			k++;
+		}
+
 		EventSet C1 = C.makeUnion(C, U1);
 
 		if (C1.isConfig()) {
 			size_t count = 0;
 			for (auto evt : D.events_)
 				for (auto evt1 : C1.events_)
-					if (evt->isImmediateConflict(evt1) and U.contains(evt1)) {
+
+				{
+
+					if (evt->isImmediateConflict1(evt,evt1) and U.contains(evt1)) {
 						count++;
 						break;
 					}
 
-			if (count == D.size()) {
-				J = U1;
 
+				}
+
+			if (count == D.size()) {
+						return U1;
 			}
 		}
-		return;
 	}
 
-	else {
-		UnfoldingEvent *a = Uc.begin();
-		EventSet evtSet1, evtSet2, evtSet3, evtSet4;
-		evtSet1 = U1;
-		evtSet3 = Uc;
-		evtSet1.insert(a);
-		evtSet3.erase(a);
-		computeAlt(J, D, C, evtSet1, evtSet3);
-
-		evtSet2 = U1;
-		evtSet4 = Uc;
-		evtSet4.erase(a);
-
-		computeAlt(J, D, C, evtSet2, evtSet4);
-	}
+	EventSet evtS;
+	return evtS;
 
 }
 
@@ -543,260 +329,996 @@ bool IntSet::inculude(IntSet other) {
 
 }
 
-/* this function collect all events (in maximal events of C)
- whose transitions are dependent with trans, And then it compute history candidate for trans */
+/*check whether a mutex wait is enabled ?*/
+bool isMwaitEnabled(Configuration C, EventSet causalityEvt, Transition trans) {
 
-void generateEvt(EventSet& exC1, Configuration C, Transition trans) {
-	EventSet hisCdt, causalityEvts, historyCandidate;
-	for (auto evt : C.maxEvent.events_)
-		if (trans.isDependent(evt->transition))
-			historyCandidate.insert(evt);
+	UnfoldingEvent * e;
+	//bool chk = false;
+	int nbLock = 0, nbUnlock = 0;
 
-	historyCandidate.erase(C.lastEvent);
-	causalityEvts.insert(C.lastEvent);
-
-	// compute causality events (events must happen to make new events are executable)
-	// previous event in the same actor must be added to causality set
-
-	for (auto evt : historyCandidate.events_)
-		if (trans.actor_id == evt->transition.actor_id) {
-			causalityEvts.insert(evt);
-			historyCandidate.erase(evt);
+	for (auto evt : C.events_)
+		if (trans.actor_id == evt->transition.actor_id
+				and trans.lockId == evt->transition.lockId) {
+			e = evt;
 			break;
 		}
 
-	/* generate new events from the enabled transition and historyCandidate
-	 each subset of historyCandidate can be a history candidate*/
-	C.createEvt(exC1, trans, causalityEvts, hisCdt, historyCandidate);
+	EventSet His = e->getHistory();
+
+	for (auto evt : His.events_)
+		if (evt->transition.type == "lock")
+			nbLock++;
+
+	EventSet unlockSet;
+
+	// get all unlock and put them into unlockSet
+
+	for (auto evt : causalityEvt.events_) {
+		nbUnlock++; // wait is only depent with unlock -> all evts in causalityEvt are unlock -> increase nbUnlock
+		EventSet H = evt->getHistory();
+		for (auto evt1 : H.events_)
+			if (evt1->transition.type == "Unlock")
+				unlockSet.insert(evt1);
+	}
+
+	return (nbLock < unlockSet.size() - 1) ? true : false;
 
 }
 
-EventSet computeEx(Configuration C, std::list<IntSet *> maxEvtHistory,
-		Transition trans, EventSet causalityEvts) {
-	EventSet exC, hisCdt, H;
-	std::set<int> inS;
 
-	// get all events in the history of the evts in causalityEvts
+bool checkSdRcCreation(Transition trans, EventSet ancestors, Configuration C) {
+
+
+
+	int nbTest =0, nbSend = 0, nbReceive = 0;
+	UnfoldingEvent *testEvt;
+	for (auto evt : ancestors.events_) if (evt->transition.type == "Test" and evt->transition.actor_id != trans.actor_id) {nbTest++; testEvt = evt;}
+
+	// one send/receive can not concern more than one communication
+
+
+	if (nbTest > 1) return false;
+	else if (nbTest ==0) return true;
+
+
+  UnfoldingEvent *testedEvt;
+  for (auto evt : C.events_) if ( evt->transition.type != "Test" and evt->transition.actor_id == testEvt->transition.actor_id and evt->transition.commId == testEvt->transition.commId)
+  {testedEvt = evt; break;}
+
+
+  // same send or receive can not be in the communiation -> not depend
+
+if (testedEvt->transition.type == trans.type or testedEvt->transition.mailbox_id != trans.mailbox_id)
+	  return false;
+
+
+
+  EventSet testedEvtHist = testedEvt->getHistory();
+  EventSet ancestorsHist;
+
+  for (auto evt : ancestors.events_)
+	   ancestorsHist = ancestorsHist.makeUnion(ancestorsHist, evt->getHistory());
+
+  // checked nb send == nb receive, if yes they concern the same comm -> test and send/receive are dependent
+
+  if (testedEvt->transition.type =="Isend"){
+	  for (auto evt: testedEvtHist.events_)
+	  if (evt->transition.type =="Isend" and evt->transition.mailbox_id == testedEvt->transition.mailbox_id) nbSend++;
+
+	  int nbReceive1 =0;
+	  for(auto evt : ancestorsHist.events_) if (evt->transition.type == "Ireceive" and
+			  evt->transition.mailbox_id == testedEvt->transition.mailbox_id)
+		  nbReceive1 ++;
+	  for(auto it: ancestors.events_) if(it->transition.type=="Ireceive"
+			  and it->transition.mailbox_id == testedEvt->transition.mailbox_id)
+		  nbReceive1 ++;
+
+	  if(nbSend != nbReceive1) return false;
+
+	  if(C.lastEvent->id == 195 and trans.actor_id == 2) std::cout<<"\n =======> trong ham check create3 ";
+
+  }
+
+  if (testedEvt->transition.type =="Ireceive"){
+
+	  bool chk = false;
+	  if(C.lastEvent->id == 309 and ancestors.size() == 2)
+		  for( auto it: ancestors.events_) if (it->id == 286)
+		  {	chk = true;   std::cout<<"\n trong check  " ; }
+
+	  for (auto evt: testedEvtHist.events_)
+	  if (evt->transition.type =="Ireceive" and evt->transition.mailbox_id == testedEvt->transition.mailbox_id) nbReceive++;
+
+	  int nbSend1 =0;
+	  for(auto evt : ancestorsHist.events_) if (evt->transition.type == "Isend" and
+			  evt->transition.mailbox_id == testedEvt->transition.mailbox_id)
+		  nbSend1 ++;
+
+	  for(auto it: ancestors.events_) if(it->transition.type=="Isend"
+			  and it->transition.mailbox_id == testedEvt->transition.mailbox_id)
+		  nbSend1 ++;
+
+	  if(nbReceive != nbSend1) return false;
+	  //if(C.lastEvent->id == 195 and trans.actor_id == 2) std::cout<<"\n =======> trong ham check create4 ";
+
+
+  }
+
+  //if(C.lastEvent->id == 195 and trans.actor_id == 2) std::cout<<"\n =======> trong ham check create5 ";
+
+
+	return true;
+}
+
+
+/* this function creating new events from a transition and a set cadidate directed ancestors (ancestorSet)
+ *  (the set includes events that can be a direct ancestor)
+ *  by combination the transition and all subset (cause)  of the set ancestorSet
+ */
+
+void Configuration::createEvts(Configuration C, EventSet& result, Transition t,
+		EventSet causuality_events, EventSet cause, EventSet ancestorSet,
+		bool chk, UnfoldingEvent *immPreEvt) {
+	if (ancestorSet.empty()) {
+
+		bool chk1 = false;
+		// if immediate precede event is not in the causuality_events, ensure that it is in the history of one event in cause
+		if (not chk)
+			for (auto evt : cause.events_)
+				if (evt->getHistory().contains(immPreEvt)) {
+					chk1 = true;
+					break;
+				}
+		/* create a new evt with directed ancestors are cause1,
+		 * if all conditions are passed (trans is enabled, any ancestors are not in the history of other ancestors)
+		 */
+		if (chk or chk1) {
+			bool send_receiveCheck = true;
+			EventSet cause1;
+			cause1 = cause1.makeUnion(cause, causuality_events);
+			//check condition for send/receive action or check enabled for MutexWait action
+
+			if (t.type =="Isend" or t.type == "Ireceive")
+			{
+
+				send_receiveCheck = checkSdRcCreation(t, cause1,  C);
+
+			}
+
+
+
+			if (send_receiveCheck) {
+			nb_events++;
+			UnfoldingEvent *e = new UnfoldingEvent(nb_events, t, cause1);
+			result.insert(e);
+			}
+
+
+		}
+		return;
+	}
+
+	else {
+		UnfoldingEvent *a = ancestorSet.begin();
+		EventSet evtSet1, evtSet2, evtSet3, evtSet4;
+		evtSet1 = cause;
+		evtSet3 = ancestorSet;
+		evtSet1.insert(a);
+		evtSet3.erase(a);
+		createEvts(C, result, t, causuality_events, evtSet1, evtSet3, chk,
+				immPreEvt);
+		evtSet2 = cause;
+		evtSet4 = ancestorSet;
+		evtSet4.erase(a);
+		createEvts(C, result, t, causuality_events, evtSet2, evtSet4, chk,
+				immPreEvt);
+	}
+
+}
+
+// gives a event in actorMaxEvent has the id = a given id
+UnfoldingEvent * Configuration::findActorMaxEvt(int id) {
+	UnfoldingEvent * immPreEvt;
+	for (auto evt : this->actorMaxEvent.events_)
+		if (evt->transition.actor_id == id)
+			immPreEvt = evt;
+	return immPreEvt;
+}
+
+/* this function produces new events from a given transition (trans) and the maxEvtHistory*/
+
+EventSet computeExt(Configuration C, std::list<EventSet> maxEvtHistory,
+		Transition trans) {
+
+	bool chk = false;
+	EventSet causalityEvts;
+	EventSet exC, ancestorSet, H;
+	UnfoldingEvent *immPreEvt;
+
+	// add causality evts to causalityEvts set, firstly add last event to causalityEvts
+	causalityEvts.insert(C.lastEvent);
+
+	/* add the immediate precede evt of transition trans to the causalityEvts
+	 *  used to make sure trans is enabled (Ti is enlabled if Ti-1 is aready fined)
+	 chk == true =>  causalityEvts contains immediate precede event of trans Or the immediate precede event is in history of lastEvt.
+	 */
+
+	if (trans.id == 0)
+		chk = true; //if trans.id ==0 => trans is always enabled do not need to check enable condition ?.
+
+	else {
+		//if immediate precede evt in maxEvent, add it to the causalityEvts
+		for (auto evt : C.maxEvent.events_)
+			if (trans.actor_id == evt->transition.actor_id) {
+				causalityEvts.insert(evt);
+				chk = true;
+				break;
+			}
+
+		//else find it in actorMaxEvent to add it into causalityEvts
+		immPreEvt = C.findActorMaxEvt(trans.actor_id);
+		if (not chk)
+			if (C.lastEvent->getHistory().contains(immPreEvt))
+				chk = true;
+	}
+
+	for (auto evt : C.maxEvent.events_)
+		if (trans.isDependent(evt->transition)
+				and (not causalityEvts.contains(evt)))
+			ancestorSet.insert(evt);
+
+	/*1. Create events from current (last) maximal event of C */
+	// 1.1 if only last evt and immidiate precede event are dependent with trans -> only one evt is created
+	if (causalityEvts.size() <= 2 and ancestorSet.size() == 0) {
+
+		nb_events++;
+
+		/* in this case only one event is created, since all MaxEvts are in the history of lastEvt*/
+		UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans, causalityEvts);
+		exC.insert(e);
+
+	}
+
+	else {
+		//1.2 else create events from trans and events in current maxEvent
+
+
+		EventSet cause;
+		EventSet exC1;
+
+		C.createEvts(C, exC1, trans, causalityEvts, cause, ancestorSet, chk,
+				immPreEvt);
+		exC = exC.makeUnion(exC, exC1);
+
+		//remove last MaxEvt, sine we already used it in the above
+		maxEvtHistory.pop_back();
+
+		/*2. We now compute new evts by using MaxEvts in the past, but we have to ensure that
+		 * the ancestor events (used to generate history candidate) are not in history of the evts in the causalityEvts
+		 */
+		std::set<int> intS;
+		// get all events in the history of the evts in causalityEvts
+		for (auto evt : causalityEvts.events_) {
+			EventSet H1;
+			H1 = evt->getHistory();
+			H = H.makeUnion(H, H1);
+		}
+
+		// put id of evts in H in the the set intS
+		for (auto evt : H.events_)
+			intS.insert(evt->id);
+
+		/* compute a set of evt that can generate history (all subset of it)
+		 by getting evts in the maximal evts but not in the history of causalityEvts*/
+
+		for (auto evtSet : maxEvtHistory) {
+			EventSet evtS;
+
+			// put ids of events that are not in the history of evts in causalityEvts into a set intS1
+
+			// if history candidate is not empty then try create new evts from its subset
+			if (not evtSet.empty()) {
+
+				// retrieve  evts in congig from intS1 (intS1 store id of evts in C whose transitions are dependent with trans)
+				EventSet evtSet1;
+				for (auto evt : evtSet.events_)
+						if ( (not H.contains(evt)) and  evt->transition.isDependent(trans))
+							evtSet1.insert(evt);
+
+				EventSet exC1;
+				EventSet cause;
+				C.createEvts(C, exC1, trans, causalityEvts, cause, evtSet1,
+						chk, immPreEvt);
+				exC = exC.makeUnion(exC, exC1);
+			}
+
+		}
+	}
+	return exC;
+
+}
+
+
+/* this function creates new events from a wait transition (trans),
+this wait waits a communication (action send/receive) in the the parameter/event evt
+The idea here is that, we try to march the communication with all possible communication to crete a complete communication,
+making wait become enabled. When the wait enable, we can create new events
+*/
+
+EventSet createWaitEvt( UnfoldingEvent * evt, Configuration C, Transition trans){
+	EventSet evtS; int nbSdRc=0;
+	EventSet hist = evt->getHistory();
+	int mbId = evt->transition.mailbox_id;
+	string comType = evt->transition.type;
+
+	if(comType =="Isend"){
+		 // if waited communication is  send, count the number of send request before the communication
+
+		 for (auto evt1: hist.events_) if (evt1->transition.type=="Isend" and evt1->transition.mailbox_id == mbId) nbSdRc++;
+
+		 // try to march the communication with all possible receice request
+		 for (auto evt2: C.events_) if (evt2->transition.type =="Ireceive" and evt2->transition.mailbox_id == mbId)
+		 {
+			 // after find ount a receive request
+			 EventSet hist1 = evt2->getHistory(); int nbRc =0;
+
+		 // count the number of receice requests before the receive that we found above
+
+		   for(auto evt3 : hist1.events_) if (evt3->transition.type =="Ireceive" and evt3->transition.mailbox_id == mbId) nbRc++;
+		   	   if (nbSdRc == nbRc) {
+
+	   // if the number send = number receive, we can march the send communication  with the rececive
+		   		   EventSet ancestors;
+		   		   UnfoldingEvent *maxEvt =  C.findActorMaxEvt(evt->transition.actor_id);
+		   		   EventSet maxEvtHist = maxEvt->getHistory();
+
+		   		   if (maxEvtHist.contains(evt2)) ancestors.insert(maxEvt);
+		   		   else if (hist1.contains(maxEvt)) ancestors.insert(evt2);
+		   		   	   else {ancestors.insert(maxEvt); ancestors.insert(evt2);}
+		   		nb_events++;
+		   		UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans, ancestors);
+		   		evtS.insert(e);
+		   	   }
+		 	 }
+	 }
+	// do the same for a receive
+	else if(comType=="Ireceive")
+	{
+			 // if waited communication is send, count the number of send request before the communication
+
+			 for (auto evt1: hist.events_) if (evt1->transition.type=="Ireceive" and evt1->transition.mailbox_id == mbId) nbSdRc++;
+
+			 // try to march the communication with all possible receice request
+			 for (auto evt2: C.events_) if (evt2->transition.type =="Isend" and evt2->transition.mailbox_id == mbId)
+			 {
+				 // after find out a receive request
+				 EventSet hist1 = evt2->getHistory(); int nbRc =0;
+
+			 // count the number of receice requests before the receive that we found above
+
+			   for(auto evt3 : hist1.events_) if (evt3->transition.type =="Isend" and evt3->transition.mailbox_id == mbId) nbRc++;
+			   	   if (nbSdRc == nbRc) {
+		   // if the number send = number receive, we can march the send communication  with the rececive
+			   		   EventSet ancestors;
+			   		   UnfoldingEvent *maxEvt =  C.findActorMaxEvt(evt->transition.actor_id);
+			   		   EventSet maxEvtHist = maxEvt->getHistory();
+
+			   		   if (maxEvtHist.contains(evt2)) ancestors.insert(maxEvt);
+			   		   else if (hist1.contains(maxEvt)) ancestors.insert(evt2);
+			   		   	   else {ancestors.insert(maxEvt); ancestors.insert(evt2);}
+			   		nb_events++;
+			   		UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans, ancestors);
+			   		evtS.insert(e);
+			   	   }
+			 	 }
+		 }
+
+	return evtS;
+}
+
+EventSet createTestEvt( EventSet exC,  UnfoldingEvent * evt, Configuration C, Transition trans){
+
+	EventSet evtS; int numberSend=0, numberReceive=0;
+	EventSet hist = evt->getHistory();
+	EventSet lastEvtHist = C.lastEvent->getHistory();
+
+	int mbId = evt->transition.mailbox_id;
+	string comType = evt->transition.type;
+	UnfoldingEvent  *newEvt1, *newEvt2;
+    EventSet ancestors;
+
+    /* since action test is always enabled, create a new event although there is no pending Ireceive
+	 * to march with the send (create ewEvt1)
+	 *
+		   		 	 	 	 /--------\
+		   					/          \
+		   evt=<Isend,ancestors>     evt2=<IReceive,ancestors>
+		   	  	  	  	  / \           /
+		   	 	 	 	 /	 \  	   /
+		   				/	  \       /
+		   	   	   	   /       \     /
+	ewEvt1 =<Test1,(e1, e2)>     newEvt2 =<Test1, (e1, e2)>
+	 * */
+
+    /*1. last evt = pre evt -> create at least one event
+     *							 |-> pre evt is in the history of last evt
+     *2. last evt != pre evt =>  |  											-> TRY TO create one evt
+     						     |-> pre evt is not in the history of last evt
+     */
+
+    // count the number of isend/ireceive befere evt
+	if (comType == "Isend") {
+		for (auto evt1 : hist.events_)
+			if (evt1->transition.type == "Isend" and evt1->transition.mailbox_id == mbId)
+				numberSend++;
+	} else if (comType == "Ireceive") {
+		for (auto evt1 : hist.events_)
+			if (evt1->transition.type == "Ireceive" and evt1->transition.mailbox_id == mbId)
+				numberReceive++;
+	}
+
+
+    // if last evt is the pre evt -> create at least one evt
+    if (C.lastEvent->transition.actor_id == trans.actor_id)
+	 //maxEvt =  C.findActorMaxEvt(evt->transition.actor_id);
+    {     EventSet maxEvtHist = C.lastEvent->getHistory();
+
+    	ancestors.insert(C.lastEvent);
+    	nb_events++;
+    	newEvt1 = new UnfoldingEvent(nb_events, trans, ancestors);
+
+    	evtS.insert(newEvt1);
+
+  /* Now try to create newEvt2 if there is a pending communication can be march
+	 with the communication tested by the Test action */
+
+
+	if(comType =="Isend"){
+
+		 // try to march the communication with all possible receice request
+		 for (auto evt2: C.events_) if (evt2->transition.type =="Ireceive" and evt2->transition.mailbox_id == mbId and (not lastEvtHist.contains(evt2)))
+		 {
+			 // after find out a receive request
+
+			 EventSet hist2 = evt2->getHistory(); int nbReceive =0;
+
+		 // count the number of receice requests before the receive that we found above
+
+		   for(auto evt3 : hist2.events_) if (evt3->transition.type =="Ireceive" and evt3->transition.mailbox_id == mbId) nbReceive++;
+		   	   if (numberSend == nbReceive)
+		   	   {
+	   /* if the number send = number receive, we can march the send communication with the rececive
+	    * -> create an new event ( newEvt2 in the figure) */
+
+		   		ancestors.insert(evt2);
+		   		nb_events++;
+		   		newEvt2 = new UnfoldingEvent(nb_events, trans, ancestors);
+
+		   		evtS.insert(newEvt2);
+
+		   	   }
+		 	 }
+	 }
+	// do the same for a receive
+
+	else if(comType =="Ireceive"){
+
+	 // try to march the communication with all possible receice request
+		 for (auto evt2: C.events_) if (evt2->transition.type =="Isend" and evt2->transition.mailbox_id == mbId and (not lastEvtHist.contains(evt2)))
+		 {
+			 // after find out a receive request
+
+			 EventSet hist2 = evt2->getHistory(); int nbSend =0;
+
+		 // count the number of receice requests heppen before the receive that we found above
+
+		   for(auto evt3 : hist2.events_) if (evt3->transition.type =="Isend" and evt3->transition.mailbox_id == mbId) nbSend++;
+		   	   if (numberReceive == nbSend)
+		   	   {
+
+	   /* if the number send = number receive, we can march the send communication with the rececive
+	    * -> create an new event ( newEvt2 in the figure) */
+
+		   		ancestors.insert(evt2);
+		   		nb_events++;
+		   		newEvt2 = new UnfoldingEvent(nb_events, trans, ancestors);
+		   		evtS.insert(newEvt2);
+
+		   	   }
+		 	 }
+	 }
+
+    }
+
+    // If the last event is evt2 (in figure), try to march evt2 with evt (in figure)
+    else {
+
+
+    	if(comType =="Isend") {
+   		 int nbReceive = 0;
+
+   		 for (auto evt2: lastEvtHist.events_) if (evt2->transition.type=="Ireceive") nbReceive++;
+   		 if (numberSend == nbReceive) {
+
+   			UnfoldingEvent *maxEvt =  C.findActorMaxEvt(evt->transition.actor_id);
+   			ancestors.insert(C.lastEvent);  if (not lastEvtHist.contains(maxEvt)) ancestors.insert(maxEvt);
+   			nb_events++;
+   			newEvt2 = new UnfoldingEvent(nb_events, trans, ancestors);
+   			evtS.insert(newEvt2);
+   		 }
+    	}
+    	else if(comType =="Ireceive") {
+
+      		 int nbSend = 0;
+      		 for (auto evt2: lastEvtHist.events_) if (evt2->transition.type=="Isend") nbSend++;
+
+      		 if (numberReceive == nbSend) {
+      			UnfoldingEvent *maxEvt =  C.findActorMaxEvt(evt->transition.actor_id);
+
+      			ancestors.insert(C.lastEvent); if (not lastEvtHist.contains(maxEvt)) ancestors.insert(maxEvt);
+      			nb_events++;
+      			newEvt2 = new UnfoldingEvent(nb_events, trans, ancestors);
+      			evtS.insert(newEvt2);
+      		 }
+
+       	}
+    }
+
+ return evtS;
+}
+
+/* given a send/receive transition and a history candidate represented by maxmal event (ancestors), this function
+   check whether we can create a event ?
+*/
+
+
+EventSet createSendReceiveEvts(Transition trans, Configuration C, std::list<EventSet> maxEvtHistory){
+EventSet exC, EvtSet, causalityEvts, ancestorSet, H;
+UnfoldingEvent *testedEvt, *immPreEvt;
+bool chk = false;
+
+
+/* if trans is not dependent with the last transition -> return
+ if the last transition is a test -> check whether they concern the same communication ?*/
+
+if (C.lastEvent->transition.type =="Test" and C.lastEvent->transition.actor_id != trans.actor_id) {
+
+
+	for (auto evt: C.events_) if (evt->transition.actor_id == C.lastEvent->transition.actor_id
+			and evt->transition.commId == C.lastEvent->transition.commId and evt->transition.type !="Test")
+
+			{ testedEvt = evt; break;}
+
+
+
+	// two sends or tow receives can not be in the same communication -> not denpendent
+		if (trans.type == testedEvt->transition.type or trans.mailbox_id != testedEvt->transition.mailbox_id )
+
+			 return EvtSet;
+
+
+	}
+
+// add causality evts to causalityEvts set, firstly add last event to causalityEvts
+causalityEvts.insert(C.lastEvent);
+
+/* add the immediate precede evt of transition trans to the causalityEvts
+ *  used to make sure trans is enabled (Ti is enlabled if Ti-1 is aready fined)
+ chk == true =>  causalityEvts contains immediate precede event of trans Or the immediate precede event is in history of lastEvt.
+ */
+
+if (trans.id == 0 or C.lastEvent->transition.actor_id == trans.actor_id)
+	chk = true; //if trans.id ==0 => trans is always enabled do not need to check enable condition ?.
+
+
+
+/* chk = true -> trans is ensured enabled or his pre evt is in the causalityEvts  */
+
+else if (C.lastEvent->transition.actor_id != trans.actor_id and (not chk)){
+
+	//if immediate precede evt in maxEvent, add it to the causalityEvts
+
+	for (auto evt : C.maxEvent.events_)
+		if (trans.actor_id == evt->transition.actor_id) {
+			causalityEvts.insert(evt);
+			chk = true;
+			break;
+		}
+
+	//else find it in actorMaxEvent and check where it is in the history of last Evt
+
+	if (not chk) {
+
+		immPreEvt = C.findActorMaxEvt(trans.actor_id);
+		if (C.lastEvent->getHistory().contains(immPreEvt))
+			chk = true;
+	}
+}
+
+
+
+// compute all events are dependent with the transition trans.
+
+	for (auto evt : C.maxEvent.events_)
+		if ((trans.isDependent(evt->transition)
+				or (evt->transition.type == "Test"
+						and evt->transition.mailbox_id == trans.mailbox_id))
+				and (not causalityEvts.contains(evt)))
+			ancestorSet.insert(evt);
+
+
+	if (checkSdRcCreation(trans, causalityEvts, C) and chk) {
+		nb_events++;
+		UnfoldingEvent *e = new UnfoldingEvent(nb_events, trans, causalityEvts);
+		exC.insert(e);  }
+
+	EventSet cause;
+	EventSet exC1;
+
+	C.createEvts(C, exC1, trans, causalityEvts, cause, ancestorSet, chk,
+			immPreEvt);
+	exC = exC.makeUnion(exC, exC1);
+
+	//remove last MaxEvt, sine we already used it before
+	maxEvtHistory.pop_back();
+
+
+	/*2. We now compute new evts by using MaxEvts in the past, but we have to ensure that
+	 * the ancestor events (used to generate history candidate) are not in history of the evts in the causalityEvts
+	 */
+	std::set<int> intS;
+	/* get all events in the history of the evts in causalityEvts */
 	for (auto evt : causalityEvts.events_) {
 		EventSet H1;
 		H1 = evt->getHistory();
 		H = H.makeUnion(H, H1);
 	}
 
-	for (auto evt : H.events_)
-		inS.insert(evt->id);
+	for (auto evtSet : maxEvtHistory) {
 
-	/* compute a set of evt that can generate history (all subset of it)
-	 by getting evts in the maximal evts but not in the history of causalityEvts*/
-
-	for (auto it : maxEvtHistory) {
 		EventSet evtS;
-		std::set<int> inS1;
-		for (auto it1 : it->ints)
-			if (not (inS.find(it1) != inS.end()))
-				inS1.insert(it1);
 
-		// if history candidate is not empty then try create new evts from its subset
-		if (not inS1.empty()) {
-			// retrieval evt from inS1;
-			EventSet evtSet;
-			for (auto it : inS1)
-				for (auto evt : C.events_)
-					if (evt->id == it and evt->transition.isDependent(trans))
-						evtSet.insert(evt);
-			// remove evt from evtSet if that evt's transition are not depent with trans
-			EventSet exC1;
-			C.createEvt(exC1, trans, causalityEvts, hisCdt, evtSet);
+		// if intS1 is not empty then retrive thier events, create new events from all subsets
+		if (not evtSet.empty()) {
 
-			/*			for (auto evt : exC1.events_) {
-			 std::cout << " tao ra :\n";
-			 evt->print();
-			 std::cout << " >>>>>>>>\n";
-			 }*/
+
+			// retrieve  evts from intS1 (intS1 store id of evts in C whose transitions are dependent with trans)
+			EventSet evtSet1;
+			for (auto evt : evtSet.events_)
+								if ( (not H.contains(evt) ) and (evt->transition.isDependent(trans)	or (evt->transition.type == "Test"	and trans.mailbox_id== evt->transition.mailbox_id)))
+
+						evtSet1.insert(evt);
+
+			EventSet exC1, cause;
+
+			C.createEvts(C, exC1, trans, causalityEvts, cause, evtSet1,
+					chk, immPreEvt);
 
 			exC = exC.makeUnion(exC, exC1);
 		}
 
 	}
 
-	return exC;
+return exC;
+
+
 
 }
 
+
 void UnfoldingChecker::extend(std::set<Actor> actors, Configuration C,
-		std::list<IntSet*> maxEvtHistory, EventSet & exC, EventSet& enC) {
+		std::list<EventSet> maxEvtHistory, EventSet & exC, EventSet& enC) {
 
 	// in the initial state each actor creates one event
 	EventSet causes;
 	if (C.empty()) {
-		for (auto p : actors)
-			if (p.trans[0].isDependingTransExecuted(actors)) {
-				nb_events++;
-				UnfoldingEvent *newEvent = new UnfoldingEvent(nb_events,
-						p.trans[0], causes);
-				if (not U.contains(newEvent))
-					U.insert(newEvent);
-				if (not enC.contains(newEvent))
-					enC.insert(newEvent);
-				if (not exC.contains(newEvent))
-					exC.insert(newEvent);
-			}
+		for (auto p : actors) {
+			nb_events++;
+			UnfoldingEvent *newEvent = new UnfoldingEvent(nb_events, p.trans[0],
+					causes);
 
-	} else {
+			if (not U.contains(newEvent)) {
+
+				U.insert(newEvent);
+				enC.insert(newEvent);
+				exC.insert(newEvent);
+
+
+			} else {
+				enC.insert(U.find(newEvent));
+				exC.insert(U.find(newEvent));
+			}
+		}
+
+		} else {
 
 		// get all enabled transitions at current appState
-
 		std::set<Transition> enabledTransitions;
 		enabledTransitions = C.lastEvent->appState.getEnabledTransition();
 
-		// try to create new events from a enabled transition and maximal Evt history of C
+		// try to create new events from a enabled transition and every maximal_Evt history in maxEvtHistory of C
 
 		for (auto trans : enabledTransitions) {
-			if (not trans.isDependent(C.lastEvent->transition))
-				continue; // don't consider this transition, since new events are already created
+			// if trans is not a wait action, and is dependent with the transition of last event
+			if (trans.isDependent(C.lastEvent->transition)
+					and trans.type != "Wait" and trans.type != "Test" and trans.type != "Isend" and trans.type != "Ireceive" ) {
 
-			EventSet exC1, hisCdt, causalityEvts, historyCandidate; // in maxEvent of C, we only consider events have transitions that are dependent with trans
+				EventSet exC1, causalityEvts;
 
-			if (trans.read_write < 2) {
+				// in maxEvent of C, we only consider events having transitions that are dependent with trans
+				if (trans.read_write < 2) {
+					std::list<EventSet> maxEvtHistory1 = maxEvtHistory;
 
-				// generate new evts from current maximal events
-				generateEvt(exC1, C, trans);
+					exC1 = computeExt(C, maxEvtHistory1, trans);
 
-				// generate new evts from past maximal events (in maximal evt history)
-				causalityEvts.insert(C.lastEvent);
+				}
 
-				for (auto evt : C.maxEvent.events_)
-					if (trans.actor_id == evt->transition.actor_id) {
-						causalityEvts.insert(evt);
-						break;
-					}
-				std::list<IntSet*> maxEvtHistory1 = maxEvtHistory;
-				maxEvtHistory1.pop_back();
-				exC1 = exC1.makeUnion(exC1,
-						computeEx(C, maxEvtHistory1, trans, causalityEvts));
+					for (auto newEvent : exC1.events_)
+					if (not U.contains(newEvent)) {
+
+														U.insert(newEvent);
+														exC.insert(newEvent);
+
+
+													} else {
+
+														exC.insert(U.find(newEvent));
+
+													}
+			}
+
+			// ELSE IF THE TRANSITION IS A isend or i receive
+
+			else if ( (trans.type == "Isend" or trans.type == "Ireceive" ) and ( trans.isDependent(C.lastEvent->transition)
+					or (C.lastEvent->transition.type =="Test" and C.lastEvent->transition.mailbox_id == trans.mailbox_id)) ) {
+
+
+				EventSet exC1 = createSendReceiveEvts(trans, C, maxEvtHistory);
+
+				for (auto newEvent : exC1.events_)
+					if (not U.contains(newEvent)) {
+											U.insert(newEvent);
+											exC.insert(newEvent);
+											} else {
+												exC.insert(U.find(newEvent));
+												}
 
 			}
 
+			// ELSE IF THE TRANSITION IS A WAIT ACTION
+			else if (trans.type == "Wait") {
 
-			exC = exC.makeUnion(exC, exC1);
+				// check which kind of communication (send/receive) waited by the wait?
+				UnfoldingEvent * evt;
+					for(auto evt1: C.events_) if (evt1->transition.actor_id == trans.actor_id and
+							evt1->transition.commId == trans.commId) {evt = evt1; break;}
+
+				/* we only call function createWaitEvt if the last action is send/ or receive
+				  or dependent with the wait (transition in the same actor) */
+
+				string comType = C.lastEvent->transition.type;
+				string comType1 = evt->transition.type;
+
+			if(C.lastEvent->transition.actor_id == trans.actor_id or
+						(comType=="Isend" and comType1 == "Ireceive") or (comType=="Ireceive" and comType1 == "Isend"))
+				{	EventSet newEvts = createWaitEvt(evt,C, trans);
+
+				//EventSet unionSet = U.makeUnion(U,gD1);
+
+									for (auto newEvent : newEvts.events_)
+									if (not U.contains(newEvent)) {
+
+																		U.insert(newEvent);
+																		exC.insert(newEvent);
+
+
+																	} else {
+
+																		exC.insert(U.find(newEvent));
+
+																	}
+
+				}
+
+
+			}
+
+			// ELSE IF THE TRANSITION IS A TEST ACTION
+
+			else if (trans.type == "Test") {
+
+			// check which kind of communication (send/receive) tested by the test?
+
+							UnfoldingEvent * event;
+								for(auto evt1: C.events_) if (evt1->transition.actor_id == trans.actor_id and
+										evt1->transition.commId == trans.commId) {event = evt1; break;}
+
+			/* we only call function createTestEvt if the last action is send or receive
+			   or dependent with the test (transition in the same actor) */
+
+							string comType = C.lastEvent->transition.type;
+							string comType1 = event->transition.type;
+
+						if(C.lastEvent->transition.actor_id == trans.actor_id or
+									(comType=="Isend" and comType1 == "Ireceive") or (comType=="Ireceive" and comType1 == "Isend"))
+
+						{
+							EventSet newEvts =createTestEvt(exC,  event, C, trans);
+
+					for (auto newEvent : newEvts.events_)
+						if (not U.contains(newEvent)) {
+
+							U.insert(newEvent);
+							exC.insert(newEvent);
+
+						} else {
+
+
+							exC.insert(U.find(newEvent));
+
+						}
+						}
+
+			}
 
 		}
 
-		for (auto evt : exC.events_) {
-			if (not U.contains(evt))
-				U.insert(evt);
 
+		for (auto evt : exC.events_) {
 			/* add new event evt to enC if evt's transition is not dependent with any transition of a event
 			 which is in C and is not in history of evt */
-
 			bool chk = true;
 			EventSet evtHisty = evt->getHistory();
 
-			for (auto evt1 : C.events_)
-				if (not evtHisty.contains(evt1)
-						and evt1->transition.isDependent(evt->transition)) {
-					chk = false;
-					break;
-				}
+			/*for (auto evt1 : C.events_)
+				if (not evtHisty.contains(evt1))
+						 {
+							if (evt1->transition.isDependent(evt->transition)) {chk = false; break;}
+							else if( (evt->transition.type =="Test" and (evt1->transition.type=="Isend" or evt1->transition.type=="Ireceive")) or
+									(evt1->transition.type =="Test" and (evt->transition.type=="Isend" or evt->transition.type=="Ireceive")))
+								  if (evt->concernSameComm(evt,evt1)) {chk = false; break;}
+				}*/
+
+			for(auto it: C.events_) if (it->isConflict(it,evt)) chk = false;
+
 			if (chk)
 				enC.insert(evt);
-		}
 
+		}
 	}
 }
 
 void UnfoldingChecker::explore(Configuration C,
-		std::list<IntSet *> maxEvtHistory, EventSet D, EventSet A,
+		std::list<EventSet> maxEvtHistory, EventSet D, EventSet A,
 		UnfoldingEvent* currentEvt, EventSet prev_exC, std::set<Actor> actors) {
 
 	UnfoldingEvent *e;
-	EventSet enC, exC = prev_exC;
+	EventSet enC, exC = prev_exC;// exC.erase(currentEvt);
+
 	exC.erase(currentEvt);
 
 	// exC = previous exC - currentEvt + new events
+
 	extend(actors, C, maxEvtHistory, exC, enC);
 
-	// should to change this condition based on 2nd paper of César, return when enC \subset of D
 
-	if (enC.empty()) {
-		std::cout << " exploring executions :\n";
-		for (auto evt : C.events_) {
-			std::cout << " \\\\\\\\\\\\\\\\\\\\\\\\--> ";
-			evt->print();
+	for(auto it: C.events_) exC.erase(it);
+
+
+	// return when enC \subset of D
+
+	bool chk = true;
+	if (enC.size() > 0 ) for (auto evt: enC.events_) if (not D.contains(evt)) {chk = false; break;}
+
+
+	if (chk) {
+
+		if (C.size() > 0) {
+
+			nb_traces++;
+			std::cout << "\n Exploring executions: " << nb_traces << " : \n";
+			std::cout
+					<< "\n-----------------------------------------------------------"
+							"-------------------------------------------------------------------"
+							"-------------------\n";
+			for (auto evt : C.events_) {
+				std::cout << " --> ";
+				evt->print();
+			}
+
+	/*		if(C.size() < 16)
+			{std::cout <<" \n co bien nhe ";
+			std::cout <<" \n co bien nhe ";
+			usleep(999999999);
+			}*/
+			std::cout
+					<< "\n-----------------------------------------------------------"
+							"-------------------------------------------------------------------"
+							"-------------------\n";
+			std::cout << "\n";
+
+
 		}
-		std::cout << "\n\n";
-
 		return;
 	}
 
+
+
 	if (A.empty()) {
 		e = enC.begin();
-		for (auto evt : enC.events_)
-			if (evt->transition.actor_id < e->transition.actor_id) {
-				std::cout << "thay vi chon thang " << e->id << "lai chon thang "<< evt->id << "\n";
-				e = evt;
-			}
-	} else
+	} else {
+
+
+
 		// if A is not empty, chose one event in the intersection of A and enC
 		for (auto evt : A.events_)
 			if (enC.contains(evt)) {
+
 				e = evt;
 				break;
-			}
 
-std::cout<<" exploring e ="; e->print();
+			}
+	}
+
+
+
+
+	std::cout << " exploring --------------------> :";
+	e->print();
+	std::cout<<"\n";
+
 
 	State nextState = currentEvt->appState.execute(e->transition);
+
 	e->appState = nextState;
 
 	// UnfoldingEvent* newEvent = e + e.transition;
+	Configuration C1 = C; C1.insert(e);
 
-	Configuration C1 = C.plus(e);
 	C1.updateMaxEvent(e);
 
 	// update history of the maximal events by adding maximal events of the current Configuration (adding intSet)
+	std::list<EventSet> maxEvtHistory1 = maxEvtHistory;
 
-	std::list<IntSet*> maxEvtHistory1 = maxEvtHistory;
-	IntSet *intSet = new IntSet();
-	for (auto evt : C1.maxEvent.events_)
-		intSet->insert(evt->id);
 
-	if (intSet->inculude(*maxEvtHistory1.back()))
-		maxEvtHistory1.pop_back();
+	maxEvtHistory1.push_back(C1.maxEvent);
 
-	maxEvtHistory1.push_back(intSet);
 
-	//end update history of the maximal events
 
 	explore(C1, maxEvtHistory1, D, A.minus(e), e, exC.minus(e), actors);
+
 	EventSet J, U1;
 	EventSet Uc = U;
 
-	computeAlt(J, D.plus(e), C, U1, Uc);
+
+		EventSet D1 = D; D1.insert(e);
+		EventSet D2 = D; D2.insert(e);
 
 
+
+		EventSet J1;
+
+		J = KpartialAlt(D1 , C);
+		//J = computeAlt(D2, C);
 
 	if (not J.empty()) {
 
-	/*	std::cout
-				<< "\n========================================>found a alterlative\n";
-		for (auto evt : J.events_)
-			evt->print();
-		std::cout << "\n========================================>end \n";*/
 
-		EventSet dif;
-		std::set_difference(J.events_.begin(), J.events_.end(),
-				C.events_.begin(), C.events_.end(),
-				std::inserter(dif.events_, dif.events_.end()));
+		J.subtruct(C);
+		explore(C, maxEvtHistory, D1, J, currentEvt, prev_exC, actors);
 
-		explore(C, maxEvtHistory, D.plus(e), dif, currentEvt, prev_exC.minus(e),
-				actors);
 	}
 
 
 	remove(e, C, D);
 
+
 }
+
+
+
+
+
 
 void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
 
@@ -804,55 +1326,86 @@ void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
 	unionSet = unionSet.makeUnion(C, D);
 
 	// building Qcdu
-	for (auto e1 : U.events_){
-		for (auto e2 : unionSet.events_) {
+	for (auto e1 : U.events_) {
+		for (auto e2 : unionSet.events_)
 			// add e1 which is immediate conflict with one event in C u D to res
-			if (e1->isImmediateConflict(e2)) {
+
+
+			if (e1->isImmediateConflict1(e1,e2)) {
 				res.insert(e1);
 				break;
 			}
-		}
-
-}
-
-	res1 = res;
-	for (auto e1 : res1.events_) {
-		//std::cout <<" lay history cho "<<e1->id <<" \n";
-		EventSet h = e1->getHistory();
-		res = res.makeUnion(res, h);
-		//std::cout <<" lay xong history cho "<<e1->id <<" \n";
 
 	}
 
+	res1 = res;
+	for (auto e1 : res1.events_) {
+		EventSet h = e1->getHistory();
+		res = res.makeUnion(res, h);
+
+	}
 
 	res = res.makeUnion(res, unionSet);
 	// move e from U to G if the condition is satisfied
 
 	if (not res.contains(e)) {
 		U.erase(e);
-		G.insert(e);
+
+		//G.insert(e);
+	}
+
+	// move history of ê from U to G
+	EventSet U1 = U;
+	for (auto evt : U1.events_)
+
+	{	if (evt->isImmediateConflict1(evt,e)) {
+
+			EventSet h = evt->getHistory();
+			h.insert(evt);
+
+			for (auto e2 : h.events_)
+				if (not res.contains(e2)) {
+					U.erase(e2);
+				//	G.insert(e2);
+				}
+		}
+
+	}
+
+}
+
+
+/*
+
+void UnfoldingChecker::remove(UnfoldingEvent* e, Configuration C, EventSet D) {
+
+	EventSet unionSet, res, res1, U1 ;
+	unionSet = unionSet.makeUnion(C, D);
+
+	// building Qcdu
+	for (auto e1 : U.events_)
+		for (auto e2 : unionSet.events_)
+				if (e1->isConflict(e1,e2)) res.insert(e1);
+
+
+res = res.makeUnion(res, unionSet);
+	U1 = U;
+for (auto it: U1.events_)
+
+
+	if (not res.contains(it))
+	{	U.erase(it);
+
+		//G.insert(e);
 	}
 
 
-		// move history of ê from U to G
-	 EventSet U1 = U;
-	 for (auto evt : U1.events_)
-	 if (evt->isImmediateConflict(e)) {
-
-	 EventSet h = evt->getHistory();
-	 h.insert(evt);
-
-	 for (auto e2 : h.events_)
-	 if (not res.contains(e2)) {
-
-	 U.erase(e2);
-	 G.insert(e2);
-	 }
-
-	 }
 
 }
+*/
 
-}
-}
+
+
+
+
 
