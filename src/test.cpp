@@ -22,25 +22,9 @@
 using namespace std;
 
 
-void doi (EventSet S) {
-	Transition t1(1, 0);
-	EventSet cause1, s1 ;
-	t1.actor_id = 111;
-	UnfoldingEvent *ee = new UnfoldingEvent(1, t1, cause1);
-
-	S.begin()->conflictEvts.insert(ee);
-}
 
 int main() {
 
-	std::set<int> s1;
-	s1.insert(1);
-	s1.insert(2);
-	s1.insert(3);
-
-	s1.erase(5);
-	for(auto it: s1) std::cout << it <<" ";
-	std::cout<<" \n bat dau ";
 
 	nb_events = 0;
 	UnfoldingChecker UC;
@@ -123,11 +107,6 @@ int main() {
 			std::cout<<"\n sau khi erase s3 la  ";
 
 					for(auto it: s3.events_)   it->print();
-
-
-
-
-
 
 			std::list<EventSet> l;
 			EventSet es1, es2;
@@ -1191,8 +1170,9 @@ int main() {
 		Transition t13(1, 1, "Isend");
 		Transition t14(1, 1, "Test");
 
-		Transition t15(1, 1, "Isend");
-		Transition t16(1, 1, "Test");
+		Transition t15(1, 1, "localComp");
+		Transition t16(1, 1, "Isend");
+		Transition t17(1, 1, "Test");
 
 		std::array<Transition, 10> trans1, trans2, trans3, trans4, trans5;
 		trans1[0] = t1;
@@ -1217,6 +1197,7 @@ int main() {
 
 		trans5[0] = t15;
 		trans5[1] = t16;
+		trans5[2] = t17;
 
 
 		//Actor(id, number of Transition, transition array )
@@ -1225,7 +1206,7 @@ int main() {
 		Actor actor2(2, 2, trans2);
 		Actor actor3(3, 2, trans3);
 		Actor actor4(4, 2, trans3);
-		Actor actor5(5, 2, trans5);
+		Actor actor5(5, 3, trans5);
 
 
 		actor_set.insert(actor1);
@@ -1322,6 +1303,78 @@ int main() {
 			maxEvtHistory.push_back(emptyS);
 
 			UC.explore(C, maxEvtHistory, D, A, e, prev_exC, actor_set);
+
+		}
+			break;
+
+
+
+	case 24: { //18 traces
+
+		//transition (maiboxid, commid, type)
+				Transition t1(1, 1, "Ireceive");
+
+				Transition t3(1, 2, "Ireceive");
+				Transition t4(1, 2, "Test");
+
+				Transition t5(1, 3, "Isend");
+
+				Transition t7(1, 4, "localComp");
+				Transition t8(1, 4, "Isend");
+
+
+
+				std::array<Transition, 10> trans1, trans2, trans3, trans4, trans5;
+				trans1[0] = t1;
+
+				trans2[0] = t3;
+				trans2[1] = t4;
+
+
+
+				trans3[0] = t5;
+
+				trans4[0] = t7;
+				trans4[1] = t8;
+
+
+
+				//Actor(id, number of Transition, transition array )
+
+				Actor actor1(1, 1, trans1);
+
+				Actor actor2(2, 2, trans2);
+
+				Actor actor3(3, 1, trans3);
+				Actor actor4(4, 2, trans4);
+
+
+				actor_set.insert(actor1);
+				actor_set.insert(actor2);
+				actor_set.insert(actor3);
+				actor_set.insert(actor4);
+
+
+				Mailbox mailbox1;
+				mailbox1.id = 1;
+
+
+				mailboxes.insert(mailbox1);
+				//mailboxes.insert(mailbox2);
+				//mailboxes.insert(mailbox3);
+
+				initState = new State(4, actor_set, mailboxes);
+
+				initState->initialState = true;
+				UnfoldingEvent *e = new UnfoldingEvent();
+				e->appState = *initState;
+				IntSet *setInt = new IntSet();
+
+				EventSet emptyS;
+				std::list<EventSet> maxEvtHistory;
+				maxEvtHistory.push_back(emptyS);
+
+				UC.explore(C, maxEvtHistory, D, A, e, prev_exC, actor_set);
 
 		}
 			break;

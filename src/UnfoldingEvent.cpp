@@ -412,6 +412,14 @@ UnfoldingEvent* EventSet::find(UnfoldingEvent *e) {
 		}
 }
 
+UnfoldingEvent * Configuration :: findTestedComm(UnfoldingEvent *testEvt){
+	for (auto it : this->events_)
+		if (it->transition.commId == testEvt->transition.commId and
+				it->transition.type != "Test" and it->transition.actor_id == testEvt->transition.actor_id)
+			return it;
+}
+
+
 /** @brief Check if I'm dependent with another EventSet
  * Here we suppose that 2 given event sets do not have common events
  *  */
